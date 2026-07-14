@@ -42,6 +42,13 @@ def _ingest_item(conn, deps: Deps, url: str, judge_result, post_row_id: int) -> 
 
 
 def run_pipeline(conn, deps: Deps, limit: int | None = None) -> RunStats:
+    """Run one discover -> judge -> ingest -> revalidate pass.
+
+    When `limit` is set (manual smoke runs only), the run stops examining
+    further posts once `limit` candidates have been processed; posts never
+    examined are left unrecorded so a later unlimited run picks them up fresh,
+    and `stats.posts_seen` only counts posts actually examined.
+    """
     from .extract import extract_weidian_urls
     from .judge import should_ingest
 
@@ -52,12 +59,12 @@ def run_pipeline(conn, deps: Deps, limit: int | None = None) -> RunStats:
         posts = deps.discover()
         seen = db.seen_post_ids(conn, [p.reddit_post_id for p in posts])
         new_posts = [p for p in posts if p.reddit_post_id not in seen]
-        stats.posts_seen = len(new_posts)
 
         processed = 0
         for post in new_posts:
             if limit is not None and processed >= limit:
                 break
+            stats.posts_seen += 1
             try:
                 post.comments = deps.fetch_comments(post)
                 text = "\n".join([post.title, post.body, *post.comments])

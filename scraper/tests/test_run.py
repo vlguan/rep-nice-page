@@ -54,6 +54,7 @@ def test_red_flagged_post_marked_flagged(conn):
     judge = JudgeResult(True, ["known shill"], None, None, None, "")
     run_pipeline(conn, make_deps(posts, judge))
     assert conn.execute("SELECT sentiment FROM reddit_posts").fetchone()[0] == "flagged"
+    assert conn.execute("SELECT count(*) FROM items").fetchone()[0] == 0
 
 
 def test_post_without_weidian_link_recorded_and_skipped(conn):
@@ -109,3 +110,35 @@ def test_run_recorded(conn):
         "SELECT posts_seen, items_added, items_deactivated, error FROM scrape_runs"
     ).fetchone()
     assert row == (1, 1, 0, None)
+
+
+def test_limit_stops_examining_and_leaves_rest_unrecorded(conn):
+    posts = [
+        make_post("pa", "no link here"),
+        make_post("pb", "https://weidian.com/item.html?itemID=901"),
+        make_post("pc", "https://weidian.com/item.html?itemID=902"),
+        make_post("pd", "also no link"),
+        make_post("pe", "https://weidian.com/item.html?itemID=903"),
+    ]
+    judge = JudgeResult(True, [], None, "clothing", None, "")
+    stats = run_pipeline(conn, make_deps(posts, judge), limit=2)
+    assert stats.items_added == 2
+    assert stats.posts_seen == 3  # pa, pb, pc examined; pd, pe never examined
+    recorded = {r[0] for r in conn.execute("SELECT reddit_post_id FROM reddit_posts").fetchall()}
+    assert recorded == {"pa", "pb", "pc"}  # pd/pe unrecorded -> fresh next run
+
+    stats2 = run_pipeline(conn, make_deps(posts, judge))  # unlimited follow-up run
+    assert stats2.items_added == 1  # pe ingested now
+    recorded2 = {r[0] for r in conn.execute("SELECT reddit_post_id FROM reddit_posts").fetchall()}
+    assert recorded2 == {"pa", "pb", "pc", "pd", "pe"}
+
+
+def test_aborted_run_records_error_and_reraises(conn):
+    import pytest
+
+    deps = make_deps([], JudgeResult(True, [], None, None, None, ""))
+    deps.discover = lambda: (_ for _ in ()).throw(RuntimeError("reddit down"))
+    with pytest.raises(RuntimeError):
+        run_pipeline(conn, deps)
+    row = conn.execute("SELECT error FROM scrape_runs").fetchone()
+    assert row[0] == "RuntimeError: reddit down"
