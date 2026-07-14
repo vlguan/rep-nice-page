@@ -1,0 +1,109 @@
+import re
+from enum import Enum
+
+import httpx
+
+from .config import USER_AGENT
+from .extract import extract_item_ids
+from .models import WeidianListing
+
+DEAD_MARKERS = [
+    "商品已下架",
+    "该店铺已关闭",
+    "商品不存在",
+    "店铺不存在",
+    "宝贝不存在",
+]
+
+MOBILE_UA = (
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
+    "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
+)
+
+
+class Liveness(Enum):
+    LIVE = "live"
+    DEAD = "dead"
+    UNKNOWN = "unknown"
+
+
+def _meta(html: str, prop: str) -> str | None:
+    match = re.search(
+        rf'<meta[^>]+(?:property|name)=["\']{re.escape(prop)}["\'][^>]+content=["\']([^"\']*)["\']',
+        html,
+        re.I,
+    )
+    return match.group(1) or None if match else None
+
+
+def detect_liveness(html: str, status_code: int) -> Liveness:
+    if status_code == 404:
+        return Liveness.DEAD
+    if status_code >= 400:
+        return Liveness.UNKNOWN
+    if any(marker in html for marker in DEAD_MARKERS):
+        return Liveness.DEAD
+    if _meta(html, "og:title"):
+        return Liveness.LIVE
+    return Liveness.UNKNOWN
+
+
+def parse_listing_html(html: str, url: str) -> WeidianListing:
+    title = _meta(html, "og:title")
+    if not title:
+        raise ValueError(f"no listing title found at {url}")
+
+    price = None
+    price_match = re.search(r'"price"\s*:\s*"?(\d+(?:\.\d+)?)', html)
+    if price_match:
+        price = float(price_match.group(1))
+
+    images: list[str] = []
+    og_image = _meta(html, "og:image")
+    if og_image:
+        images.append(og_image)
+    for match in re.finditer(r'https://si\.geilicdn\.com/[^\s"\'\\]+?\.(?:jpg|jpeg|png|webp)', html):
+        if match.group(0) not in images:
+            images.append(match.group(0))
+
+    seller = _meta(html, "shop_name")
+    if not seller:
+        seller_match = re.search(r'"shopName"\s*:\s*"([^"]+)"', html)
+        seller = seller_match.group(1) if seller_match else None
+
+    ids = extract_item_ids(url)
+    id_match = re.search(r'"itemID"\s*:\s*"?(\d+)', html)
+
+    return WeidianListing(
+        weidian_url=url,
+        weidian_item_id=ids[0] if ids else (id_match.group(1) if id_match else None),
+        title_zh=title,
+        description_zh=_meta(html, "og:description") or "",
+        price_cny=price,
+        seller_name=seller,
+        image_urls=images,
+    )
+
+
+def fetch_lightweight(url: str, timeout: float = 15.0) -> tuple[str, int]:
+    resp = httpx.get(
+        url,
+        headers={"User-Agent": MOBILE_UA},
+        follow_redirects=True,
+        timeout=timeout,
+    )
+    return resp.text, resp.status_code
+
+
+def fetch_rendered(url: str, timeout_ms: int = 30000) -> tuple[str, int]:
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        try:
+            page = browser.new_page(user_agent=MOBILE_UA)
+            resp = page.goto(url, timeout=timeout_ms, wait_until="domcontentloaded")
+            page.wait_for_timeout(2000)  # let client-side rendering settle
+            return page.content(), resp.status if resp else 0
+        finally:
+            browser.close()
