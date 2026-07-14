@@ -1,7 +1,39 @@
 # rep-nice-page
 
-Public catalog of replica fashion items trending on r/FashionReps, enriched from Weidian, with Superbuy handoff.
+Public catalog of replica fashion items trending on r/FashionReps, enriched from Weidian (translated, photos), with one-click Superbuy handoff. Dead Weidian listings are removed automatically by daily revalidation.
 
-- `web/` — Next.js catalog site (Railway service)
-- `scraper/` — Python daily pipeline (Railway cron service)
-- Spec: `docs/superpowers/specs/2026-07-13-rep-nice-page-design.md`
+## Layout
+
+- `web/` — Next.js catalog site
+- `scraper/` — Python daily pipeline (discover → judge → enrich → revalidate)
+- `docs/superpowers/` — spec + implementation plan
+
+## Railway setup (3 services, one project)
+
+1. **Postgres** — add the Railway Postgres plugin. Copy `DATABASE_URL`.
+2. **web** — service from this repo, root directory `web/`.
+   - Env: `DATABASE_URL`
+   - Build/start: Railway autodetects Next.js (`npm run build` / `npm start`).
+3. **scraper** — service from this repo, root directory `scraper/` (Dockerfile detected).
+   - Env: `DATABASE_URL`, `ANTHROPIC_API_KEY`
+   - Settings → Cron Schedule: `0 9 * * *` (daily 09:00 UTC). Restart policy: Never.
+
+Apply migrations once (and after schema changes):
+
+    cd web && DATABASE_URL=<railway url> npx drizzle-kit migrate
+
+## Local development
+
+    docker run -d --name repnice-test-pg -e POSTGRES_PASSWORD=test -p 5433:5432 postgres:16
+    cd web && DATABASE_URL=postgresql://postgres:test@localhost:5433/postgres npx drizzle-kit migrate
+
+- Web: `cd web && DATABASE_URL=postgresql://postgres:test@localhost:5433/postgres npm run dev`
+- Scraper tests: `cd scraper && TEST_DATABASE_URL=postgresql://postgres:test@localhost:5433/postgres .venv/bin/python -m pytest`
+- Web tests: `cd web && TEST_DATABASE_URL=postgresql://postgres:test@localhost:5433/postgres npx vitest run`
+- Pipeline smoke run (5 posts, real network + LLM):
+  `cd scraper && DATABASE_URL=postgresql://postgres:test@localhost:5433/postgres ANTHROPIC_API_KEY=sk-... .venv/bin/python -m scraper.run --limit 5`
+
+## Ops
+
+- Did last night's run work? `SELECT * FROM scrape_runs ORDER BY id DESC LIMIT 5;`
+- An item wrongly deactivated revives automatically next run if its listing is live again.
