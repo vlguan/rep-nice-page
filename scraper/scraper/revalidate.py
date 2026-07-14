@@ -1,3 +1,18 @@
+"""Weidian listing revalidation.
+
+revalidate_all re-checks every tracked item's liveness and updates its
+status accordingly. To guard against a mass false-positive (e.g. a Weidian
+outage or a detection regression making every listing look dead), decisions
+are computed in a first pass without writing anything. If the number of
+planned deactivations exceeds a circuit-breaker threshold
+(max(3, 40% of items that were 'active' at the start of the run)), the
+breaker trips: an ERROR is logged, no deactivations are applied for that
+run, and 0 is returned. Revivals and touch_validated updates for
+definitive (non-UNKNOWN) results are still applied even when the breaker
+trips. Per-item write failures are isolated and do not abort the rest of
+the run.
+"""
+
 import logging
 
 from . import db
@@ -28,15 +43,44 @@ def check_liveness(url: str, fetch=fetch_lightweight, render=fetch_rendered) -> 
 
 
 def revalidate_all(conn, fetch=fetch_lightweight, render=fetch_rendered) -> int:
-    deactivated = 0
-    for item_id, url, current_status in db.get_items_for_validation(conn):
+    items = db.get_items_for_validation(conn)
+    active_count = sum(1 for _, _, status in items if status == "active")
+
+    # Pass 1: decide what to do for each item without writing anything.
+    decisions = []
+    for item_id, url, current_status in items:
         try:
             liveness = check_liveness(url, fetch=fetch, render=render)
             new_status = decide_status(liveness, current_status)
-            if new_status is not None:
+            decisions.append((item_id, url, new_status, liveness))
+        except Exception:
+            logger.warning(
+                "revalidation failed for item_id=%s url=%s; skipping", item_id, url, exc_info=True
+            )
+
+    planned_deactivations = sum(1 for _, _, new_status, _ in decisions if new_status == "inactive")
+    threshold = max(3, int(0.4 * active_count))
+    breaker_tripped = planned_deactivations > threshold
+    if breaker_tripped:
+        logger.error(
+            "revalidate_all circuit breaker tripped: %d planned deactivations exceeds "
+            "threshold %d (active_count=%d); applying no deactivations this run",
+            planned_deactivations,
+            threshold,
+            active_count,
+        )
+
+    # Pass 2: apply decisions, isolating per-item write failures.
+    deactivated = 0
+    for item_id, url, new_status, liveness in decisions:
+        try:
+            if new_status == "inactive":
+                if breaker_tripped:
+                    continue
                 db.set_item_status(conn, item_id, new_status)
-                if new_status == "inactive":
-                    deactivated += 1
+                deactivated += 1
+            elif new_status == "active":
+                db.set_item_status(conn, item_id, new_status)
             elif liveness is not Liveness.UNKNOWN:
                 db.touch_validated(conn, item_id)
         except Exception:

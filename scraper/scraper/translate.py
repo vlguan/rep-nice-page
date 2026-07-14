@@ -17,6 +17,17 @@ DESCRIPTION:
 """
 
 
+def _extract_text(message) -> str:
+    content = getattr(message, "content", None)
+    if not content:
+        raise ValueError("empty or non-text response")
+    block = content[0]
+    text = getattr(block, "text", None)
+    if not isinstance(text, str):
+        raise ValueError("empty or non-text response")
+    return text
+
+
 def parse_translation(text: str) -> Translation:
     start, end = text.find("{"), text.rfind("}")
     if start == -1 or end <= start:
@@ -44,7 +55,7 @@ def translate_listing(client: anthropic.Anthropic, listing: WeidianListing) -> T
             messages=[{"role": "user", "content": prompt}],
         )
         try:
-            return parse_translation(message.content[0].text)
+            return parse_translation(_extract_text(message))
         except ValueError as e:
             last_err = e
     raise ValueError(f"translation unparseable after retry: {last_err}")

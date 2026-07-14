@@ -1,6 +1,9 @@
+import types
+
 import pytest
 
-from scraper.translate import parse_translation
+from scraper.models import WeidianListing
+from scraper.translate import parse_translation, translate_listing
 
 
 def test_parse_good():
@@ -22,3 +25,25 @@ def test_parse_missing_title_raises():
 def test_parse_non_json_raises():
     with pytest.raises(ValueError):
         parse_translation("no json here")
+
+
+def test_translate_listing_raises_value_error_on_empty_content():
+    class FakeMessages:
+        def create(self, **kwargs):
+            return types.SimpleNamespace(content=[])
+
+    class FakeClient:
+        messages = FakeMessages()
+
+    listing = WeidianListing(
+        weidian_url="https://weidian.com/item.html?itemID=1",
+        weidian_item_id="1",
+        title_zh="t",
+        description_zh="d",
+        price_cny=None,
+        seller_name=None,
+        image_urls=[],
+    )
+
+    with pytest.raises(ValueError):
+        translate_listing(FakeClient(), listing)

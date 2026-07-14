@@ -91,3 +91,57 @@ def test_db_failure_on_one_item_does_not_abort_rest(conn, monkeypatch):
     statuses = {r[0]: r[2] for r in db.get_items_for_validation(conn)}
     assert statuses[second] == "inactive"  # later item still processed
     assert statuses[first] == "active"     # failed write left it unchanged
+
+
+@requires_db
+def test_circuit_breaker_trips_when_all_active_items_appear_dead(conn):
+    from scraper import db
+    from scraper.models import JudgeResult, Translation, WeidianListing
+
+    t = Translation("t", "")
+    j = JudgeResult(True, [], None, None, None, "")
+    ids = [
+        db.upsert_item(
+            conn,
+            WeidianListing(f"https://weidian.com/item.html?itemID={i}", None, "t", "", None, None, []),
+            t,
+            j,
+        )
+        for i in range(5)
+    ]
+
+    deactivated = revalidate_all(conn, fetch=lambda u: (DEAD_HTML, 200), render=lambda u: (DEAD_HTML, 200))
+
+    assert deactivated == 0
+    statuses = {r[0]: r[2] for r in db.get_items_for_validation(conn)}
+    for item_id in ids:
+        assert statuses[item_id] == "active"
+
+
+@requires_db
+def test_circuit_breaker_does_not_trip_for_single_deactivation_among_five(conn):
+    from scraper import db
+    from scraper.models import JudgeResult, Translation, WeidianListing
+
+    t = Translation("t", "")
+    j = JudgeResult(True, [], None, None, None, "")
+    ids = [
+        db.upsert_item(
+            conn,
+            WeidianListing(f"https://weidian.com/item.html?itemID={i}", None, "t", "", None, None, []),
+            t,
+            j,
+        )
+        for i in range(5)
+    ]
+
+    def fetch(url):
+        return (DEAD_HTML, 200) if url.endswith("itemID=0") else (LIVE_HTML, 200)
+
+    deactivated = revalidate_all(conn, fetch=fetch, render=fetch)
+
+    assert deactivated == 1
+    statuses = {r[0]: r[2] for r in db.get_items_for_validation(conn)}
+    assert statuses[ids[0]] == "inactive"
+    for item_id in ids[1:]:
+        assert statuses[item_id] == "active"

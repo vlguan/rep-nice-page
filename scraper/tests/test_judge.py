@@ -1,9 +1,10 @@
 import json
+import types
 
 import pytest
 
-from scraper.judge import parse_judge_response, should_ingest
-from scraper.models import JudgeResult
+from scraper.judge import judge_post, parse_judge_response, should_ingest
+from scraper.models import JudgeResult, RedditPost
 
 GOOD = json.dumps({
     "positive_sentiment": True,
@@ -41,6 +42,30 @@ def test_parse_missing_sentiment_raises():
 def test_parse_non_json_raises():
     with pytest.raises(ValueError):
         parse_judge_response("sorry, I cannot help with that")
+
+
+def test_judge_post_raises_value_error_on_empty_content():
+    class FakeMessages:
+        def create(self, **kwargs):
+            return types.SimpleNamespace(content=[])
+
+    class FakeClient:
+        messages = FakeMessages()
+
+    post = RedditPost(
+        reddit_post_id="abc",
+        permalink="/r/FashionReps/comments/abc",
+        title="t",
+        body="b",
+        subreddit="FashionReps",
+        score=1,
+        num_comments=0,
+        posted_at=0,
+        comments=[],
+    )
+
+    with pytest.raises(ValueError):
+        judge_post(FakeClient(), post)
 
 
 def test_should_ingest():

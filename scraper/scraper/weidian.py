@@ -44,9 +44,16 @@ def detect_liveness(html: str, status_code: int) -> Liveness:
         return Liveness.DEAD
     if status_code >= 400:
         return Liveness.UNKNOWN
-    if any(marker in html for marker in DEAD_MARKERS):
+    has_dead_marker = any(marker in html for marker in DEAD_MARKERS)
+    has_og_title = bool(_meta(html, "og:title"))
+    if has_dead_marker and has_og_title:
+        # Conflicting signals (Weidian is an SPA, so removal-notice strings can
+        # appear inside <script> bundles even on live pages) — never
+        # deactivate on ambiguity.
+        return Liveness.UNKNOWN
+    if has_dead_marker:
         return Liveness.DEAD
-    if _meta(html, "og:title"):
+    if has_og_title:
         return Liveness.LIVE
     return Liveness.UNKNOWN
 

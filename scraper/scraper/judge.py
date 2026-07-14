@@ -34,6 +34,17 @@ TOP COMMENTS:
 """
 
 
+def _extract_text(message) -> str:
+    content = getattr(message, "content", None)
+    if not content:
+        raise ValueError("empty or non-text response")
+    block = content[0]
+    text = getattr(block, "text", None)
+    if not isinstance(text, str):
+        raise ValueError("empty or non-text response")
+    return text
+
+
 def parse_judge_response(text: str) -> JudgeResult:
     start, end = text.find("{"), text.rfind("}")
     if start == -1 or end <= start:
@@ -69,7 +80,7 @@ def judge_post(client: anthropic.Anthropic, post: RedditPost) -> JudgeResult:
             messages=[{"role": "user", "content": prompt}],
         )
         try:
-            return parse_judge_response(message.content[0].text)
+            return parse_judge_response(_extract_text(message))
         except ValueError as e:
             last_err = e
     raise ValueError(f"judge response unparseable after retry: {last_err}")

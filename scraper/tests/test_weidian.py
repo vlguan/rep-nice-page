@@ -44,6 +44,14 @@ def test_parse_dead_page_raises():
         parse_listing_html(DEAD_HTML, URL)
 
 
+def test_dead_marker_with_og_title_is_ambiguous():
+    html = (
+        '<html><head><meta property="og:title" content="帽衫"/></head>'
+        '<body><script>var msg="商品已下架"</script></body></html>'
+    )
+    assert detect_liveness(html, 200) is Liveness.UNKNOWN
+
+
 def test_meta_attribute_order_reversed():
     html = '<html><head><meta content="帽衫" property="og:title"/></head><body></body></html>'
     assert detect_liveness(html, 200) is Liveness.LIVE
