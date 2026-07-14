@@ -1,0 +1,111 @@
+from scraper.models import JudgeResult, RedditPost, Translation
+from scraper.run import Deps, run_pipeline
+from tests.conftest import requires_db
+
+pytestmark = requires_db
+
+LIVE_HTML = (
+    '<html><head><meta property="og:title" content="帽衫"/>'
+    '<meta property="og:description" content="重磅"/>'
+    '<meta property="og:image" content="https://si.geilicdn.com/a.jpg"/></head><body></body></html>'
+)
+
+
+def make_post(pid, body, score=100):
+    return RedditPost(
+        reddit_post_id=pid, permalink=f"https://reddit.com/{pid}", title=f"post {pid}",
+        body=body, subreddit="FashionReps", score=score, num_comments=1, posted_at=1752300000,
+    )
+
+
+def make_deps(posts, judge_result):
+    return Deps(
+        discover=lambda: posts,
+        fetch_comments=lambda post: ["nice quality"],
+        judge=lambda post: judge_result,
+        fetch_page=lambda url: (LIVE_HTML, 200),
+        translate=lambda listing: Translation("CH hoodie", "heavy fabric"),
+        revalidate=lambda conn: 0,
+    )
+
+
+def test_positive_post_creates_item(conn):
+    posts = [make_post("p1", "https://weidian.com/item.html?itemID=111")]
+    judge = JudgeResult(True, [], "Chrome Hearts", "clothing", "hoodie", "good")
+    stats = run_pipeline(conn, make_deps(posts, judge))
+    assert stats.posts_seen == 1
+    assert stats.items_added == 1
+    row = conn.execute("SELECT title_en, status FROM items").fetchone()
+    assert row == ("CH hoodie", "active")
+    assert conn.execute("SELECT count(*) FROM item_mentions").fetchone()[0] == 1
+
+
+def test_negative_post_records_post_but_no_item(conn):
+    posts = [make_post("p2", "https://weidian.com/item.html?itemID=222")]
+    judge = JudgeResult(False, [], None, None, None, "shilly")
+    stats = run_pipeline(conn, make_deps(posts, judge))
+    assert stats.items_added == 0
+    assert conn.execute("SELECT sentiment FROM reddit_posts").fetchone()[0] == "negative"
+    assert conn.execute("SELECT count(*) FROM items").fetchone()[0] == 0
+
+
+def test_red_flagged_post_marked_flagged(conn):
+    posts = [make_post("p3", "https://weidian.com/item.html?itemID=333")]
+    judge = JudgeResult(True, ["known shill"], None, None, None, "")
+    run_pipeline(conn, make_deps(posts, judge))
+    assert conn.execute("SELECT sentiment FROM reddit_posts").fetchone()[0] == "flagged"
+
+
+def test_post_without_weidian_link_recorded_and_skipped(conn):
+    posts = [make_post("p4", "just haul pics")]
+    deps = make_deps(posts, JudgeResult(True, [], None, None, None, ""))
+    deps.judge = lambda post: (_ for _ in ()).throw(AssertionError("judge must not be called"))
+    stats = run_pipeline(conn, deps)
+    assert stats.items_added == 0
+    assert conn.execute("SELECT sentiment FROM reddit_posts").fetchone()[0] is None
+
+
+def test_already_seen_posts_skipped(conn):
+    posts = [make_post("p5", "https://weidian.com/item.html?itemID=555")]
+    judge = JudgeResult(True, [], None, "clothing", None, "")
+    run_pipeline(conn, make_deps(posts, judge))
+    stats = run_pipeline(conn, make_deps(posts, judge))  # second run, same post
+    assert stats.items_added == 0
+    assert conn.execute("SELECT count(*) FROM reddit_posts").fetchone()[0] == 1
+
+
+def test_one_bad_item_does_not_kill_run(conn):
+    posts = [
+        make_post("p6", "https://weidian.com/item.html?itemID=666"),
+        make_post("p7", "https://weidian.com/item.html?itemID=777"),
+    ]
+    judge = JudgeResult(True, [], None, "clothing", None, "")
+    deps = make_deps(posts, judge)
+
+    def flaky_fetch(url):
+        if "666" in url:
+            raise TimeoutError("weidian down")
+        return LIVE_HTML, 200
+
+    deps.fetch_page = flaky_fetch
+    stats = run_pipeline(conn, deps)
+    assert stats.items_added == 1
+
+
+def test_limit_caps_candidate_posts(conn):
+    posts = [
+        make_post(f"p{i}", f"https://weidian.com/item.html?itemID=10{i}") for i in range(10)
+    ]
+    judge = JudgeResult(True, [], None, "clothing", None, "")
+    stats = run_pipeline(conn, make_deps(posts, judge), limit=3)
+    assert stats.items_added == 3
+
+
+def test_run_recorded(conn):
+    posts = [make_post("p8", "https://weidian.com/item.html?itemID=888")]
+    judge = JudgeResult(True, [], None, "clothing", None, "")
+    run_pipeline(conn, make_deps(posts, judge))
+    row = conn.execute(
+        "SELECT posts_seen, items_added, items_deactivated, error FROM scrape_runs"
+    ).fetchone()
+    assert row == (1, 1, 0, None)
