@@ -63,3 +63,31 @@ def test_revalidate_all_deactivates_and_revives(conn):
     )
     assert statuses[dead_id] == "inactive"
     assert statuses[live_id] == "active"
+
+
+@requires_db
+def test_db_failure_on_one_item_does_not_abort_rest(conn, monkeypatch):
+    from scraper import db
+    from scraper.models import JudgeResult, Translation, WeidianListing
+
+    t = Translation("t", "")
+    j = JudgeResult(True, [], None, None, None, "")
+    first = db.upsert_item(conn, WeidianListing("https://weidian.com/item.html?itemID=1", None, "t", "", None, None, []), t, j)
+    second = db.upsert_item(conn, WeidianListing("https://weidian.com/item.html?itemID=2", None, "t", "", None, None, []), t, j)
+
+    real_set = db.set_item_status
+
+    def failing_set(c, item_id, status):
+        if item_id == first:
+            raise RuntimeError("db blip")
+        real_set(c, item_id, status)
+
+    monkeypatch.setattr("scraper.revalidate.db.set_item_status", failing_set)
+
+    dead = "<html><body>商品已下架</body></html>"
+    deactivated = revalidate_all(conn, fetch=lambda u: (dead, 200), render=lambda u: (dead, 200))
+
+    assert deactivated == 1  # only the item whose write succeeded
+    statuses = {r[0]: r[2] for r in db.get_items_for_validation(conn)}
+    assert statuses[second] == "inactive"  # later item still processed
+    assert statuses[first] == "active"     # failed write left it unchanged

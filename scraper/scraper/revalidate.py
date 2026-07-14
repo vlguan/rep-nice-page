@@ -30,12 +30,17 @@ def check_liveness(url: str, fetch=fetch_lightweight, render=fetch_rendered) -> 
 def revalidate_all(conn, fetch=fetch_lightweight, render=fetch_rendered) -> int:
     deactivated = 0
     for item_id, url, current_status in db.get_items_for_validation(conn):
-        liveness = check_liveness(url, fetch=fetch, render=render)
-        new_status = decide_status(liveness, current_status)
-        if new_status == "inactive":
-            deactivated += 1
-        if new_status is not None:
-            db.set_item_status(conn, item_id, new_status)
-        elif liveness is not Liveness.UNKNOWN:
-            db.touch_validated(conn, item_id)
+        try:
+            liveness = check_liveness(url, fetch=fetch, render=render)
+            new_status = decide_status(liveness, current_status)
+            if new_status is not None:
+                db.set_item_status(conn, item_id, new_status)
+                if new_status == "inactive":
+                    deactivated += 1
+            elif liveness is not Liveness.UNKNOWN:
+                db.touch_validated(conn, item_id)
+        except Exception:
+            logger.warning(
+                "revalidation failed for item_id=%s url=%s; skipping", item_id, url, exc_info=True
+            )
     return deactivated
