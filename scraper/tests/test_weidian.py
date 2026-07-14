@@ -42,3 +42,28 @@ def test_parse_listing():
 def test_parse_dead_page_raises():
     with pytest.raises(ValueError):
         parse_listing_html(DEAD_HTML, URL)
+
+
+def test_meta_attribute_order_reversed():
+    html = '<html><head><meta content="帽衫" property="og:title"/></head><body></body></html>'
+    assert detect_liveness(html, 200) is Liveness.LIVE
+    listing = parse_listing_html(html, URL)
+    assert listing.title_zh == "帽衫"
+
+
+def test_price_prefers_canonical_over_sku_variants():
+    html = (
+        '<html><head><meta property="og:title" content="帽衫"/></head><body>'
+        '<script>window.__DATA__ = {"skuList":[{"price":"300.00"},{"price":"310.00"}],"price":"268.00"}</script>'
+        "</body></html>"
+    )
+    assert parse_listing_html(html, URL).price_cny == 268.0
+
+
+def test_price_from_og_meta_wins():
+    html = (
+        '<html><head><meta property="og:title" content="帽衫"/>'
+        '<meta property="og:product:price:amount" content="199.5"/></head><body>'
+        '<script>{"price":"888"}</script></body></html>'
+    )
+    assert parse_listing_html(html, URL).price_cny == 199.5

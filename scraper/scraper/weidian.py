@@ -3,7 +3,6 @@ from enum import Enum
 
 import httpx
 
-from .config import USER_AGENT
 from .extract import extract_item_ids
 from .models import WeidianListing
 
@@ -28,12 +27,16 @@ class Liveness(Enum):
 
 
 def _meta(html: str, prop: str) -> str | None:
-    match = re.search(
-        rf'<meta[^>]+(?:property|name)=["\']{re.escape(prop)}["\'][^>]+content=["\']([^"\']*)["\']',
-        html,
-        re.I,
+    escaped = re.escape(prop)
+    patterns = (
+        rf'<meta[^>]+(?:property|name)=["\']{escaped}["\'][^>]+content=["\']([^"\']*)["\']',
+        rf'<meta[^>]+content=["\']([^"\']*)["\'][^>]+(?:property|name)=["\']{escaped}["\']',
     )
-    return match.group(1) or None if match else None
+    for pattern in patterns:
+        match = re.search(pattern, html, re.I)
+        if match:
+            return match.group(1) or None
+    return None
 
 
 def detect_liveness(html: str, status_code: int) -> Liveness:
@@ -54,9 +57,13 @@ def parse_listing_html(html: str, url: str) -> WeidianListing:
         raise ValueError(f"no listing title found at {url}")
 
     price = None
-    price_match = re.search(r'"price"\s*:\s*"?(\d+(?:\.\d+)?)', html)
-    if price_match:
-        price = float(price_match.group(1))
+    price_meta = _meta(html, "og:product:price:amount")
+    if price_meta:
+        price = float(price_meta)
+    else:
+        price_matches = list(re.finditer(r'"price"\s*:\s*"?(\d+(?:\.\d+)?)', html))
+        if price_matches:
+            price = float(price_matches[-1].group(1))
 
     images: list[str] = []
     og_image = _meta(html, "og:image")
