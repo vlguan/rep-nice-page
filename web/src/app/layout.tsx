@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "rep nice page",
+  title: "Digital Canal Street",
   description: "Replica fashion items trending on r/FashionReps, with Superbuy links",
 };
 
