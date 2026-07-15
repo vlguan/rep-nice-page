@@ -78,7 +78,11 @@ def parse_post_page(page: Selector) -> list[str]:
 def discover_posts(limit: int = DISCOVER_LIMIT) -> list[RedditPost]:
     posts: list[RedditPost] = []
     seen: set[str] = set()
-    for start in (f"{BASE}/r/{SUBREDDIT}/top/?t=week", f"{BASE}/r/{SUBREDDIT}/hot/"):
+    for start in (
+        f"{BASE}/r/{SUBREDDIT}/top/?t=week",
+        f"{BASE}/r/{SUBREDDIT}/top/?t=month",
+        f"{BASE}/r/{SUBREDDIT}/hot/",
+    ):
         url: str | None = start
         collected = 0
         while url and collected < limit:

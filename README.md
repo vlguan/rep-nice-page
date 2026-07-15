@@ -18,7 +18,7 @@ Public catalog of replica fashion items trending on r/FashionReps, enriched from
    - Build/start: Railway autodetects Next.js (`npm run build` / `npm start`).
 3. **scraper** — service from this repo, root directory `scraper/` (Dockerfile detected).
    - Env: `DATABASE_URL`, `ANTHROPIC_API_KEY`, `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`
-   - Settings → Cron Schedule: `0 9 * * *` (daily 09:00 UTC). Restart policy: Never.
+   - Settings → Cron Schedule: `0 9 * * 0` (weekly, Sundays 09:00 UTC). Restart policy: Never.
 
 Reddit credentials: Reddit blocks unauthenticated JSON access, so the scraper uses the
 official OAuth API (application-only grant, read-only). Create an app at
