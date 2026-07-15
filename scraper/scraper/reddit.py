@@ -76,18 +76,36 @@ def fetch_json(client: httpx.Client, url: str, retries: int = 3):
     raise RuntimeError(f"rate limited after {retries} attempts: {url}")
 
 
+# Listings pulled per run. Longer time windows (week + month) build a heavy
+# initial catalog; `hot` keeps it fresh. Overlap is deduplicated below.
+DISCOVER_LISTINGS = ("top?t=week", "top?t=month", "hot")
+
+
 def discover_posts(client: httpx.Client, limit: int = DISCOVER_LIMIT) -> list[RedditPost]:
     posts: list[RedditPost] = []
     seen: set[str] = set()
-    for path in (
-        f"/r/{SUBREDDIT}/top?t=week&limit={limit}",
-        f"/r/{SUBREDDIT}/hot?limit={limit}",
-    ):
-        for post in parse_listing(fetch_json(client, API_BASE + path)):
-            if post.reddit_post_id not in seen:
-                seen.add(post.reddit_post_id)
-                posts.append(post)
-        time.sleep(REQUEST_DELAY)
+    for listing in DISCOVER_LISTINGS:
+        sep = "&" if "?" in listing else "?"
+        after: str | None = None
+        collected = 0
+        while collected < limit:
+            page_size = min(100, limit - collected)  # Reddit caps a listing at 100
+            url = f"/r/{SUBREDDIT}/{listing}{sep}limit={page_size}"
+            if after:
+                url += f"&after={after}"
+            payload = fetch_json(client, API_BASE + url)
+            page_posts = parse_listing(payload)
+            if not page_posts:
+                break
+            for post in page_posts:
+                collected += 1
+                if post.reddit_post_id not in seen:
+                    seen.add(post.reddit_post_id)
+                    posts.append(post)
+            after = (payload.get("data") or {}).get("after")
+            time.sleep(REQUEST_DELAY)
+            if not after:
+                break
     return posts
 
 

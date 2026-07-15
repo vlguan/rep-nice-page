@@ -19,7 +19,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       <header>
         <h1 className="text-2xl font-bold">Digital Canal Street</h1>
         <p className="text-sm text-zinc-500">
-          items trending on r/FashionReps, refreshed daily · dead listings removed automatically
+          trending rep fashion, begin chinamaxxing
         </p>
       </header>
       <FilterBar
