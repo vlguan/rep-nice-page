@@ -5,4 +5,4 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY scraper ./scraper
 
-CMD ["python", "-m", "scraper.run"]
+CMD ["python", "-m", "scraper.worker"]

@@ -28,6 +28,7 @@ def make_deps(posts, judge_result):
         revalidate=lambda conn: 0,
         sync_sheets=lambda: None,
         promote=lambda: 0,
+        promote_requested=lambda: 0,
     )
 
 

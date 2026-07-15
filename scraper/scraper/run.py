@@ -22,6 +22,7 @@ class Deps:
     revalidate: Callable[..., int]
     sync_sheets: Callable[[], None]
     promote: Callable[[], int]
+    promote_requested: Callable[[], int]
 
 
 @dataclass
@@ -151,6 +152,11 @@ def build_default_deps(conn) -> Deps:
         promote=lambda: promote_mod.promote_rows(
             conn, fetch_page=fetch_rendered,
             translate=lambda listing, context: translate_mod.translate_listing(llm, listing, context),
+        ),
+        promote_requested=lambda: promote_mod.promote_rows(
+            conn, fetch_page=fetch_rendered,
+            translate=lambda listing, context: translate_mod.translate_listing(llm, listing, context),
+            budget=10, requested_only=True,
         ),
     )
 
