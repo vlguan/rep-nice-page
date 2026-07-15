@@ -133,6 +133,87 @@ def touch_validated(conn: psycopg.Connection, item_id: int) -> None:
     conn.execute("UPDATE items SET last_validated_at=now() WHERE id=%s", (item_id,))
 
 
+def upsert_spreadsheet(conn: psycopg.Connection, sheet_key: str, url: str, post_row_id: int | None) -> int:
+    row = conn.execute(
+        """
+        INSERT INTO spreadsheets (sheet_key, url, discovered_post_id)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (sheet_key) DO UPDATE SET sheet_key = EXCLUDED.sheet_key
+        RETURNING id
+        """,
+        (sheet_key, url, post_row_id),
+    ).fetchone()
+    return row[0]
+
+
+def sheets_due_for_sync(conn: psycopg.Connection, days: int = 7) -> list[tuple[int, str]]:
+    return conn.execute(
+        """
+        SELECT id, sheet_key FROM spreadsheets
+        WHERE status = 'active'
+          AND (last_synced_at IS NULL OR last_synced_at < now() - make_interval(days => %s))
+        ORDER BY last_synced_at NULLS FIRST, id
+        """,
+        (days,),
+    ).fetchall()
+
+
+def mark_sheet_synced(conn: psycopg.Connection, spreadsheet_id: int, title: str | None = None, error: str | None = None) -> None:
+    if error is None:
+        conn.execute(
+            "UPDATE spreadsheets SET last_synced_at = now(), sync_error = NULL, title = coalesce(%s, title) WHERE id = %s",
+            (title, spreadsheet_id),
+        )
+    else:
+        # second consecutive failure marks the sheet gone
+        conn.execute(
+            """
+            UPDATE spreadsheets
+            SET last_synced_at = now(),
+                status = CASE WHEN sync_error IS NOT NULL THEN 'gone' ELSE status END,
+                sync_error = %s
+            WHERE id = %s
+            """,
+            (error, spreadsheet_id),
+        )
+
+
+def upsert_sheet_rows(conn: psycopg.Connection, spreadsheet_id: int, tab_name: str, rows: list[dict]) -> None:
+    for r in rows:
+        conn.execute(
+            """
+            INSERT INTO spreadsheet_rows
+              (spreadsheet_id, tab_name, row_number, name, price_raw, currency,
+               image_url, raw_link, product_url, platform)
+            VALUES (%(sid)s, %(tab)s, %(row_number)s, %(name)s, %(price_raw)s, %(currency)s,
+                    %(image_url)s, %(raw_link)s, %(product_url)s, %(platform)s)
+            ON CONFLICT (spreadsheet_id, tab_name, row_number) DO UPDATE
+              SET name = EXCLUDED.name, price_raw = EXCLUDED.price_raw,
+                  currency = EXCLUDED.currency, image_url = EXCLUDED.image_url,
+                  raw_link = EXCLUDED.raw_link, product_url = EXCLUDED.product_url,
+                  platform = EXCLUDED.platform
+            """,
+            {**r, "sid": spreadsheet_id, "tab": tab_name},
+        )
+    conn.execute(
+        """
+        UPDATE spreadsheet_rows sr SET item_id = i.id
+        FROM items i
+        WHERE sr.spreadsheet_id = %s AND sr.item_id IS NULL AND sr.product_url = i.product_url
+        """,
+        (spreadsheet_id,),
+    )
+    conn.execute(
+        """
+        INSERT INTO item_spreadsheet_mentions (item_id, spreadsheet_id)
+        SELECT DISTINCT sr.item_id, sr.spreadsheet_id FROM spreadsheet_rows sr
+        WHERE sr.spreadsheet_id = %s AND sr.item_id IS NOT NULL
+        ON CONFLICT DO NOTHING
+        """,
+        (spreadsheet_id,),
+    )
+
+
 def record_run(
     conn: psycopg.Connection,
     started_at: datetime,

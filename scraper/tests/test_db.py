@@ -82,3 +82,55 @@ def test_record_run(conn):
     db.record_run(conn, datetime.now(timezone.utc), 200, 5, 2, None)
     row = conn.execute("SELECT posts_seen, items_added, items_deactivated, error FROM scrape_runs").fetchone()
     assert row == (200, 5, 2, None)
+
+
+def test_upsert_spreadsheet_idempotent(conn):
+    from scraper import db
+
+    a = db.upsert_spreadsheet(conn, "key1", "https://docs.google.com/spreadsheets/d/key1", None)
+    b = db.upsert_spreadsheet(conn, "key1", "https://docs.google.com/spreadsheets/d/key1", None)
+    assert a == b
+    assert conn.execute("SELECT count(*) FROM spreadsheets").fetchone()[0] == 1
+
+
+def test_upsert_sheet_rows_upserts_and_links_existing_items(conn):
+    from scraper import db
+
+    sid = db.upsert_spreadsheet(conn, "key2", "u", None)
+    conn.execute(
+        "INSERT INTO items (product_url, platform, status) VALUES"
+        " ('https://weidian.com/item.html?itemID=11', 'weidian', 'active')"
+    )
+    rows = [{
+        "row_number": 2, "name": "hoodie", "price_raw": "199", "currency": "CNY",
+        "image_url": None, "raw_link": "x", "product_url": "https://weidian.com/item.html?itemID=11",
+        "platform": "weidian",
+    }]
+    db.upsert_sheet_rows(conn, sid, "Hoodies", rows)
+    db.upsert_sheet_rows(conn, sid, "Hoodies", rows)  # re-sync: no dup
+    assert conn.execute("SELECT count(*) FROM spreadsheet_rows").fetchone()[0] == 1
+    linked = conn.execute("SELECT item_id FROM spreadsheet_rows").fetchone()[0]
+    assert linked is not None
+    assert conn.execute("SELECT count(*) FROM item_spreadsheet_mentions").fetchone()[0] == 1
+
+
+def test_sheets_due_for_sync(conn):
+    from scraper import db
+
+    fresh = db.upsert_spreadsheet(conn, "k-fresh", "u", None)
+    conn.execute("UPDATE spreadsheets SET last_synced_at = now() WHERE id = %s", (fresh,))
+    stale = db.upsert_spreadsheet(conn, "k-stale", "u", None)
+    conn.execute("UPDATE spreadsheets SET last_synced_at = now() - interval '8 days' WHERE id = %s", (stale,))
+    never = db.upsert_spreadsheet(conn, "k-never", "u", None)
+    due = {row[0] for row in db.sheets_due_for_sync(conn)}
+    assert due == {stale, never}
+
+
+def test_mark_sheet_synced_gone_after_repeated_error(conn):
+    from scraper import db
+
+    sid = db.upsert_spreadsheet(conn, "k-err", "u", None)
+    db.mark_sheet_synced(conn, sid, error="403 Forbidden")
+    assert conn.execute("SELECT status FROM spreadsheets WHERE id=%s", (sid,)).fetchone()[0] == "active"
+    db.mark_sheet_synced(conn, sid, error="403 Forbidden")
+    assert conn.execute("SELECT status FROM spreadsheets WHERE id=%s", (sid,)).fetchone()[0] == "gone"
