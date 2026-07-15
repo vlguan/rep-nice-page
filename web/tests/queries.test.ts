@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { sql } from "drizzle-orm";
 
 const hasDb = !!process.env.TEST_DATABASE_URL;
 
@@ -11,6 +12,9 @@ describe.skipIf(!hasDb)("queries", () => {
     db = (await import("../src/db/client")).db;
     schema = await import("../src/db/schema");
     queries = await import("../src/db/queries");
+    await db.delete(schema.itemSpreadsheetMentions);
+    await db.delete(schema.spreadsheetRows);
+    await db.delete(schema.spreadsheets);
     await db.delete(schema.itemMentions);
     await db.delete(schema.items);
     await db.delete(schema.redditPosts);
@@ -71,5 +75,33 @@ describe.skipIf(!hasDb)("queries", () => {
     const opts = await queries.getFilterOptions();
     expect(opts.brands.sort()).toEqual(["CH", "VW"]);
     expect(opts.categories.sort()).toEqual(["clothing", "jewelry"]);
+  });
+
+  it("searchItems fuzzy-matches title and brand", async () => {
+    const hits = await queries.searchItems("hoddie", {});
+    expect(hits.map((h) => h.titleEn)).toContain("hot hoodie");
+    const brandHits = await queries.searchItems("CH", {});
+    expect(brandHits.length).toBeGreaterThan(0);
+  });
+
+  it("searchStagingRows matches unpromoted rows and flags top matches", async () => {
+    const [sheet] = await db
+      .insert(schema.spreadsheets)
+      .values({ sheetKey: "sk1", url: "u", title: "Big W2C" })
+      .returning();
+    await db.insert(schema.spreadsheetRows).values([
+      { spreadsheetId: sheet.id, tabName: "T", rowNumber: 2, name: "Hellstar hoodie", productUrl: "https://weidian.com/item.html?itemID=9", platform: "weidian" },
+      { spreadsheetId: sheet.id, tabName: "T", rowNumber: 3, name: "unrelated socks", productUrl: "https://weidian.com/item.html?itemID=10", platform: "weidian" },
+    ]);
+    const rows = await queries.searchStagingRows("hellstar hoodie");
+    expect(rows[0].name).toBe("Hellstar hoodie");
+    expect(rows[0].sheetTitle).toBe("Big W2C");
+
+    await queries.flagRowsForPromotion("hellstar hoodie");
+    const flagged = await db
+      .select({ name: schema.spreadsheetRows.name })
+      .from(schema.spreadsheetRows)
+      .where(sql`requested_at IS NOT NULL`);
+    expect(flagged.map((f) => f.name)).toContain("Hellstar hoodie");
   });
 });
