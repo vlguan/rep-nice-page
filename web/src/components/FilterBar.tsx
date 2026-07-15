@@ -3,7 +3,7 @@ import Link from "next/link";
 type Props = {
   brands: string[];
   categories: string[];
-  current: { category?: string; brand?: string; sort?: string };
+  current: { category?: string; brand?: string; sort?: string; q?: string };
 };
 
 function buildHref(current: Props["current"], patch: Record<string, string | undefined>) {
@@ -30,6 +30,21 @@ function Chip({ href, active, children }: { href: string; active: boolean; child
 export function FilterBar({ brands, categories, current }: Props) {
   return (
     <div className="space-y-2">
+      <form action="" method="get" className="flex gap-2">
+        {current.category && <input type="hidden" name="category" value={current.category} />}
+        {current.brand && <input type="hidden" name="brand" value={current.brand} />}
+        {current.sort && <input type="hidden" name="sort" value={current.sort} />}
+        <input
+          type="search"
+          name="q"
+          defaultValue={current.q ?? ""}
+          placeholder="Search items… (e.g. hellstar hoodie)"
+          className="rounded border border-zinc-300 px-3 py-1.5 text-sm w-56"
+        />
+        <button type="submit" className="rounded bg-zinc-900 text-white px-3 py-1.5 text-sm">
+          Search
+        </button>
+      </form>
       <div className="flex flex-wrap gap-2 items-center">
         <span className="text-xs uppercase text-zinc-500 w-16">Sort</span>
         {(["trending", "newest", "price"] as const).map((s) => (

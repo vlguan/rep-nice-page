@@ -61,7 +61,7 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
             rel="noopener noreferrer"
             className="block w-full rounded-xl border border-zinc-300 text-center py-2 text-sm hover:bg-zinc-50"
           >
-            View original on Weidian
+            View original on {item.platform === "taobao" ? "Taobao" : "Weidian"}
           </a>
 
           {item.descriptionEn && <p className="text-sm text-zinc-700 whitespace-pre-line">{item.descriptionEn}</p>}

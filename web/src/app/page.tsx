@@ -1,18 +1,22 @@
 import { FilterBar } from "@/components/FilterBar";
 import { ItemCard } from "@/components/ItemCard";
-import { getFilterOptions, getItems, type SortKey } from "@/db/queries";
+import { StagingCard } from "@/components/StagingCard";
+import { flagRowsForPromotion, getFilterOptions, getItems, searchItems, searchStagingRows, type SortKey } from "@/db/queries";
 
 export const dynamic = "force-dynamic";
 
-type SearchParams = Promise<{ category?: string; brand?: string; sort?: string }>;
+type SearchParams = Promise<{ category?: string; brand?: string; sort?: string; q?: string }>;
 
 export default async function Home({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
   const sort = (["trending", "newest", "price"].includes(params.sort ?? "") ? params.sort : "trending") as SortKey;
-  const [itemList, filterOptions] = await Promise.all([
-    getItems({ category: params.category, brand: params.brand, sort }),
+  const q = params.q?.trim();
+  const [itemList, filterOptions, stagingRows] = await Promise.all([
+    q ? searchItems(q, { category: params.category, brand: params.brand }) : getItems({ category: params.category, brand: params.brand, sort }),
     getFilterOptions(),
+    q ? searchStagingRows(q) : Promise.resolve([]),
   ]);
+  if (q) void flagRowsForPromotion(q).catch(() => {});
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 space-y-6">
@@ -25,7 +29,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       <FilterBar
         brands={filterOptions.brands}
         categories={filterOptions.categories}
-        current={{ category: params.category, brand: params.brand, sort: params.sort }}
+        current={{ category: params.category, brand: params.brand, sort: params.sort, q: params.q }}
       />
       {itemList.length === 0 ? (
         <p className="text-zinc-500 py-16 text-center">No items yet — the scraper hasn&apos;t run.</p>
@@ -35,6 +39,17 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
             <ItemCard key={item.id} item={item} />
           ))}
         </div>
+      )}
+      {stagingRows.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="text-lg font-semibold">From community spreadsheets</h2>
+          <p className="text-xs text-zinc-500">These match your search but aren&apos;t fully cataloged yet — they&apos;re being fetched now and appear above on your next search.</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            {stagingRows.map((row) => (
+              <StagingCard key={row.id} row={row} />
+            ))}
+          </div>
+        </section>
       )}
     </main>
   );
