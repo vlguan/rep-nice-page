@@ -5,6 +5,7 @@ import openpyxl
 import pytest
 
 from scraper.sheets import ColumnMap, MAX_ROWS_PER_TAB, map_columns, parse_tab
+from tests.conftest import requires_db
 
 
 def make_ws(rows):
@@ -73,3 +74,49 @@ def test_map_columns_not_items_tab_returns_none():
 def test_map_columns_requires_name_and_link():
     llm = FakeLLM('{"is_items": true, "name_col": 0, "price_col": null, "link_col": null, "image_col": null, "currency": null}')
     assert map_columns(llm, "Tab", [["Item"]]) is None
+
+
+@requires_db
+def test_sync_spreadsheets_stages_rows(conn):
+    import httpx
+
+    from scraper import db
+    from scraper.sheets import sync_spreadsheets
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Hoodies"
+    ws.append(["Item", "Price", "Link"])
+    ws.append(["Hellstar hoodie", "199", "https://weidian.com/item.html?itemID=77"])
+    buf = io.BytesIO()
+    wb.save(buf)
+
+    def handler(request):
+        return httpx.Response(200, content=buf.getvalue())
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    llm = FakeLLM('{"is_items": true, "name_col": 0, "price_col": 1, "link_col": 2, "image_col": null, "currency": "CNY"}')
+
+    db.upsert_spreadsheet(conn, "sync-key", "https://docs.google.com/spreadsheets/d/sync-key", None)
+    sync_spreadsheets(conn, llm, client)
+
+    row = conn.execute("SELECT name, product_url, platform FROM spreadsheet_rows").fetchone()
+    assert row == ("Hellstar hoodie", "https://weidian.com/item.html?itemID=77", "weidian")
+    assert conn.execute("SELECT last_synced_at FROM spreadsheets").fetchone()[0] is not None
+
+
+@requires_db
+def test_sync_spreadsheets_records_error(conn):
+    import httpx
+
+    from scraper import db
+    from scraper.sheets import sync_spreadsheets
+
+    def handler(request):
+        return httpx.Response(403)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    db.upsert_spreadsheet(conn, "denied-key", "u", None)
+    sync_spreadsheets(conn, None, client)  # llm never reached
+    err = conn.execute("SELECT sync_error FROM spreadsheets").fetchone()[0]
+    assert err and "403" in err

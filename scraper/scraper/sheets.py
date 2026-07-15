@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import httpx
 import openpyxl
 
+from . import db
 from .config import MODEL, USER_AGENT
 from .extract import resolve_product_link
 
@@ -143,3 +144,25 @@ def parse_tab(ws, colmap: ColumnMap) -> list[dict]:
             "platform": resolved[0] if resolved else None,
         })
     return rows
+
+
+def sync_sheet(conn, llm, http_client, spreadsheet_id: int, sheet_key: str) -> None:
+    workbook = download_workbook(sheet_key, http_client)
+    title = None
+    for ws in workbook.worksheets[:MAX_TABS]:
+        preview = [[c.value for c in row] for row in ws.iter_rows(max_row=10)]
+        colmap = map_columns(llm, ws.title, preview)
+        if colmap is None:
+            continue
+        title = title or workbook.properties.title or ws.title
+        db.upsert_sheet_rows(conn, spreadsheet_id, ws.title, parse_tab(ws, colmap))
+    db.mark_sheet_synced(conn, spreadsheet_id, title=title)
+
+
+def sync_spreadsheets(conn, llm, http_client) -> None:
+    for spreadsheet_id, sheet_key in db.sheets_due_for_sync(conn):
+        try:
+            sync_sheet(conn, llm, http_client, spreadsheet_id, sheet_key)
+        except Exception as e:
+            logger.warning("sheet sync failed for %s", sheet_key, exc_info=True)
+            db.mark_sheet_synced(conn, spreadsheet_id, error=f"{type(e).__name__}: {e}")
