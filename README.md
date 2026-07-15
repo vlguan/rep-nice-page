@@ -15,8 +15,14 @@ Public catalog of replica fashion items trending on r/FashionReps, enriched from
    - Env: `DATABASE_URL`
    - Build/start: Railway autodetects Next.js (`npm run build` / `npm start`).
 3. **scraper** — service from this repo, root directory `scraper/` (Dockerfile detected).
-   - Env: `DATABASE_URL`, `ANTHROPIC_API_KEY`
+   - Env: `DATABASE_URL`, `ANTHROPIC_API_KEY`, `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`
    - Settings → Cron Schedule: `0 9 * * *` (daily 09:00 UTC). Restart policy: Never.
+
+Reddit credentials: Reddit blocks unauthenticated JSON access, so the scraper uses the
+official OAuth API (application-only grant, read-only). Create an app at
+https://www.reddit.com/prefs/apps (type: **script**, any name, redirect uri
+`http://localhost:8080`) and use its client id + secret. Locally these can live in
+`scraper/.env` (gitignored), which the CLI loads automatically.
 
 Apply migrations once (and after schema changes):
 

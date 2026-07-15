@@ -107,13 +107,12 @@ def run_pipeline(conn, deps: Deps, limit: int | None = None) -> RunStats:
 
 def build_default_deps() -> Deps:
     import anthropic
-    import httpx
 
     from . import judge as judge_mod
     from . import reddit, revalidate, translate as translate_mod
     from .weidian import fetch_rendered
 
-    http_client = httpx.Client()
+    http_client = reddit.oauth_client()  # reads REDDIT_CLIENT_ID/SECRET
     llm = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY
 
     return Deps(
@@ -126,8 +125,23 @@ def build_default_deps() -> Deps:
     )
 
 
+def load_env_file(path: "pathlib.Path | None" = None) -> None:
+    """Load KEY=VALUE lines from scraper/.env into os.environ (no overrides)."""
+    import pathlib
+
+    env_file = path or pathlib.Path(__file__).resolve().parents[1] / ".env"
+    if not env_file.exists():
+        return
+    for line in env_file.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            key, value = line.split("=", 1)
+            os.environ.setdefault(key.strip(), value.strip().strip('"'))
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    load_env_file()
     parser = argparse.ArgumentParser(description="rep-nice-page daily pipeline")
     parser.add_argument("--limit", type=int, default=None, help="max candidate posts to process")
     args = parser.parse_args()

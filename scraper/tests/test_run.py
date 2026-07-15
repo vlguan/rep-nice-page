@@ -142,3 +142,19 @@ def test_aborted_run_records_error_and_reraises(conn):
         run_pipeline(conn, deps)
     row = conn.execute("SELECT error FROM scrape_runs").fetchone()
     assert row[0] == "RuntimeError: reddit down"
+
+
+def test_load_env_file_sets_without_override(tmp_path, monkeypatch):
+    from scraper.run import load_env_file
+
+    env = tmp_path / ".env"
+    env.write_text('REDDIT_CLIENT_ID=abc123\n# comment\nREDDIT_CLIENT_SECRET="s3cret"\nEXISTING=filevalue\n')
+    monkeypatch.delenv("REDDIT_CLIENT_ID", raising=False)
+    monkeypatch.delenv("REDDIT_CLIENT_SECRET", raising=False)
+    monkeypatch.setenv("EXISTING", "shellvalue")
+    load_env_file(env)
+    import os
+
+    assert os.environ["REDDIT_CLIENT_ID"] == "abc123"
+    assert os.environ["REDDIT_CLIENT_SECRET"] == "s3cret"
+    assert os.environ["EXISTING"] == "shellvalue"  # shell wins over file
