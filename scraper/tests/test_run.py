@@ -27,6 +27,7 @@ def make_deps(posts, judge_result):
         translate=lambda listing, context: Translation("CH hoodie", "heavy fabric"),
         revalidate=lambda conn: 0,
         sync_sheets=lambda: None,
+        promote=lambda: 0,
     )
 
 

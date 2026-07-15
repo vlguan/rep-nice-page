@@ -21,6 +21,7 @@ class Deps:
     translate: Callable[[WeidianListing, str], Translation]
     revalidate: Callable[..., int]
     sync_sheets: Callable[[], None]
+    promote: Callable[[], int]
 
 
 @dataclass
@@ -98,6 +99,7 @@ def run_pipeline(conn, deps: Deps, limit: int | None = None) -> RunStats:
                 logger.warning("failed to process post %s", post.reddit_post_id, exc_info=True)
 
         deps.sync_sheets()
+        deps.promote()
         stats.items_deactivated = deps.revalidate(conn)
     except Exception as e:
         error = f"{type(e).__name__}: {e}"
@@ -116,6 +118,7 @@ def build_default_deps(conn) -> Deps:
     import httpx as _httpx
 
     from . import judge as judge_mod
+    from . import promote as promote_mod
     from . import revalidate, sheets, translate as translate_mod
     from .weidian import fetch_rendered
 
@@ -145,6 +148,10 @@ def build_default_deps(conn) -> Deps:
         translate=lambda listing, context: translate_mod.translate_listing(llm, listing, context),
         revalidate=revalidate.revalidate_all,
         sync_sheets=lambda: sheets.sync_spreadsheets(conn, llm, sheet_client),
+        promote=lambda: promote_mod.promote_rows(
+            conn, fetch_page=fetch_rendered,
+            translate=lambda listing, context: translate_mod.translate_listing(llm, listing, context),
+        ),
     )
 
 

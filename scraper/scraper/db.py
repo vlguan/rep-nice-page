@@ -214,6 +214,70 @@ def upsert_sheet_rows(conn: psycopg.Connection, spreadsheet_id: int, tab_name: s
     )
 
 
+def rows_to_promote(conn: psycopg.Connection, budget: int, requested_only: bool = False) -> list[dict]:
+    where_requested = "AND requested_at IS NOT NULL" if requested_only else ""
+    rows = conn.execute(
+        f"""
+        SELECT id, spreadsheet_id, name, price_raw, currency, image_url, product_url, platform
+        FROM spreadsheet_rows
+        WHERE item_id IS NULL AND promote_error IS NULL AND product_url IS NOT NULL
+          {where_requested}
+        ORDER BY (requested_at IS NULL), requested_at, created_at DESC, id
+        LIMIT %s
+        """,
+        (budget,),
+    ).fetchall()
+    cols = ["id", "spreadsheet_id", "name", "price_raw", "currency", "image_url", "product_url", "platform"]
+    return [dict(zip(cols, r)) for r in rows]
+
+
+def mark_row_promoted(conn: psycopg.Connection, row_id: int, item_id: int) -> None:
+    conn.execute("UPDATE spreadsheet_rows SET item_id = %s WHERE id = %s", (item_id, row_id))
+    conn.execute(
+        """
+        INSERT INTO item_spreadsheet_mentions (item_id, spreadsheet_id)
+        SELECT %s, spreadsheet_id FROM spreadsheet_rows WHERE id = %s
+        ON CONFLICT DO NOTHING
+        """,
+        (item_id, row_id),
+    )
+
+
+def mark_row_error(conn: psycopg.Connection, row_id: int, error: str) -> None:
+    conn.execute("UPDATE spreadsheet_rows SET promote_error = %s WHERE id = %s", (error, row_id))
+
+
+def upsert_sheet_item(conn: psycopg.Connection, row: dict, translation: Translation) -> int:
+    out = conn.execute(
+        """
+        INSERT INTO items
+          (product_url, platform_item_id, platform, title_en, description_en,
+           brand, category, price_cny, image_urls, status, last_validated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'active', NULL)
+        ON CONFLICT (product_url) DO UPDATE
+          SET title_en = EXCLUDED.title_en,
+              brand = EXCLUDED.brand,
+              category = EXCLUDED.category,
+              price_cny = EXCLUDED.price_cny,
+              image_urls = EXCLUDED.image_urls,
+              updated_at = now()
+        RETURNING id
+        """,
+        (
+            row["product_url"],
+            row["product_url"].rsplit("=", 1)[-1],
+            row["platform"],
+            translation.title_en,
+            translation.description_en,
+            translation.brand,
+            translation.category,
+            row.get("price_cny"),
+            json.dumps([row["image_url"]] if row.get("image_url") else []),
+        ),
+    ).fetchone()
+    return out[0]
+
+
 def record_run(
     conn: psycopg.Connection,
     started_at: datetime,
