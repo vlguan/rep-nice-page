@@ -12,7 +12,9 @@ Public catalog of replica fashion items trending on r/FashionReps, enriched from
 
 1. **Postgres** — add the Railway Postgres plugin. Copy `DATABASE_URL`.
 2. **web** — service from this repo, root directory `web/`.
-   - Env: `DATABASE_URL`
+   - Env: `DATABASE_URL`, `SUPERBUY_PARTNER_CODE` (affiliate code appended to
+     Superbuy handoff links; new-user registrations via those links are
+     attributed to our affiliate account. Omit to disable.)
    - Build/start: Railway autodetects Next.js (`npm run build` / `npm start`).
 3. **scraper** — service from this repo, root directory `scraper/` (Dockerfile detected).
    - Env: `DATABASE_URL`, `ANTHROPIC_API_KEY`, `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`
