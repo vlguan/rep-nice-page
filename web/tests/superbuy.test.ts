@@ -8,7 +8,7 @@ afterEach(() => {
 
 describe("superbuyUrl", () => {
   it("builds the platform/id form with partner code and tracking", () => {
-    expect(superbuyUrl("https://weidian.com/item.html?itemID=7506689137", "wcOcdG")).toBe(
+    expect(superbuyUrl("https://weidian.com/item.html?itemID=7506689137", "weidian", "wcOcdG")).toBe(
       "https://www.superbuy.com/en/page/buy/?platform=WD&id=7506689137&partnercode=wcOcdG&trackPayload=pc_share",
     );
   });
@@ -29,6 +29,12 @@ describe("superbuyUrl", () => {
   it("falls back to the url wrapper when the item id cannot be parsed", () => {
     expect(superbuyUrl("https://weidian.com/some/other/page")).toBe(
       "https://www.superbuy.com/en/page/buy/?url=https%3A%2F%2Fweidian.com%2Fsome%2Fother%2Fpage",
+    );
+  });
+
+  it("builds a TB link for taobao items", () => {
+    expect(superbuyUrl("https://item.taobao.com/item.htm?id=987", "taobao", "wcOcdG")).toBe(
+      "https://www.superbuy.com/en/page/buy/?platform=TB&id=987&partnercode=wcOcdG&trackPayload=pc_share",
     );
   });
 });

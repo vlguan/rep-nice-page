@@ -17,15 +17,15 @@ describe.skipIf(!hasDb)("queries", () => {
 
     const [hot] = await db
       .insert(schema.items)
-      .values({ weidianUrl: "https://weidian.com/item.html?itemID=1", titleEn: "hot hoodie", brand: "CH", category: "clothing", priceCny: "268", status: "active", imageUrls: [] })
+      .values({ productUrl: "https://weidian.com/item.html?itemID=1", titleEn: "hot hoodie", brand: "CH", category: "clothing", priceCny: "268", status: "active", imageUrls: [] })
       .returning();
     const [cold] = await db
       .insert(schema.items)
-      .values({ weidianUrl: "https://weidian.com/item.html?itemID=2", titleEn: "cold ring", brand: "VW", category: "jewelry", priceCny: "80", status: "active", imageUrls: [] })
+      .values({ productUrl: "https://weidian.com/item.html?itemID=2", titleEn: "cold ring", brand: "VW", category: "jewelry", priceCny: "80", status: "active", imageUrls: [] })
       .returning();
     await db
       .insert(schema.items)
-      .values({ weidianUrl: "https://weidian.com/item.html?itemID=3", titleEn: "dead item", status: "inactive", imageUrls: [] });
+      .values({ productUrl: "https://weidian.com/item.html?itemID=3", titleEn: "dead item", status: "inactive", imageUrls: [] });
 
     const [p1] = await db
       .insert(schema.redditPosts)

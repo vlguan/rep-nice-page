@@ -48,7 +48,7 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
           {item.sellerName && <p className="text-sm text-zinc-500">Seller: {item.sellerName}</p>}
 
           <a
-            href={superbuyUrl(item.weidianUrl)}
+            href={superbuyUrl(item.productUrl, item.platform)}
             target="_blank"
             rel="noopener noreferrer"
             className="block w-full rounded-xl bg-zinc-900 text-white text-center py-3 font-medium hover:bg-zinc-700"
@@ -56,7 +56,7 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
             Buy via Superbuy →
           </a>
           <a
-            href={item.weidianUrl}
+            href={item.productUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="block w-full rounded-xl border border-zinc-300 text-center py-2 text-sm hover:bg-zinc-50"

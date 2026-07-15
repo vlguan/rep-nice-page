@@ -1,11 +1,12 @@
 import {
-  pgTable, serial, text, integer, numeric, jsonb, timestamp, primaryKey,
+  pgTable, serial, text, integer, numeric, jsonb, timestamp, primaryKey, unique,
 } from "drizzle-orm/pg-core";
 
 export const items = pgTable("items", {
   id: serial("id").primaryKey(),
-  weidianUrl: text("weidian_url").notNull().unique(),
-  weidianItemId: text("weidian_item_id"),
+  productUrl: text("product_url").notNull().unique(),
+  platformItemId: text("platform_item_id"),
+  platform: text("platform").notNull().default("weidian"), // weidian | taobao
   titleZh: text("title_zh"),
   titleEn: text("title_en"),
   descriptionEn: text("description_en"),
@@ -53,3 +54,46 @@ export const scrapeRuns = pgTable("scrape_runs", {
   itemsDeactivated: integer("items_deactivated"),
   error: text("error"),
 });
+
+export const spreadsheets = pgTable("spreadsheets", {
+  id: serial("id").primaryKey(),
+  sheetKey: text("sheet_key").notNull().unique(),
+  url: text("url").notNull(),
+  title: text("title"),
+  discoveredPostId: integer("discovered_post_id").references(() => redditPosts.id),
+  discoveredAt: timestamp("discovered_at", { withTimezone: true }).defaultNow(),
+  lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+  syncError: text("sync_error"),
+  status: text("status").notNull().default("active"), // active | gone
+});
+
+export const spreadsheetRows = pgTable(
+  "spreadsheet_rows",
+  {
+    id: serial("id").primaryKey(),
+    spreadsheetId: integer("spreadsheet_id").notNull().references(() => spreadsheets.id),
+    tabName: text("tab_name").notNull(),
+    rowNumber: integer("row_number").notNull(),
+    name: text("name"),
+    priceRaw: text("price_raw"),
+    currency: text("currency"),
+    imageUrl: text("image_url"),
+    rawLink: text("raw_link"),
+    productUrl: text("product_url"),
+    platform: text("platform"),
+    itemId: integer("item_id").references(() => items.id),
+    requestedAt: timestamp("requested_at", { withTimezone: true }),
+    promoteError: text("promote_error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (t) => [unique("spreadsheet_rows_sheet_tab_row_unique").on(t.spreadsheetId, t.tabName, t.rowNumber)],
+);
+
+export const itemSpreadsheetMentions = pgTable(
+  "item_spreadsheet_mentions",
+  {
+    itemId: integer("item_id").notNull().references(() => items.id),
+    spreadsheetId: integer("spreadsheet_id").notNull().references(() => spreadsheets.id),
+  },
+  (t) => [primaryKey({ columns: [t.itemId, t.spreadsheetId] })],
+);
