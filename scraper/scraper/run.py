@@ -20,6 +20,7 @@ class Deps:
     fetch_page: Callable[[str], tuple[str, int]]
     translate: Callable[[WeidianListing, str], Translation]
     revalidate: Callable[..., int]
+    sync_sheets: Callable[[], None]
 
 
 @dataclass
@@ -49,7 +50,7 @@ def run_pipeline(conn, deps: Deps, limit: int | None = None) -> RunStats:
     examined are left unrecorded so a later unlimited run picks them up fresh,
     and `stats.posts_seen` only counts posts actually examined.
     """
-    from .extract import extract_urls_with_context
+    from .extract import extract_sheet_keys, extract_urls_with_context
     from .judge import should_ingest
 
     started_at = datetime.now(timezone.utc)
@@ -69,6 +70,10 @@ def run_pipeline(conn, deps: Deps, limit: int | None = None) -> RunStats:
                 post.comments = deps.fetch_comments(post)
                 chunks = [f"{post.title}\n{post.body}", *post.comments]
                 url_contexts = extract_urls_with_context(chunks)
+                for key in extract_sheet_keys("\n".join(chunks)):
+                    db.upsert_spreadsheet(
+                        conn, key, f"https://docs.google.com/spreadsheets/d/{key}", None
+                    )
                 if not url_contexts:
                     db.insert_post(conn, post, None, None)
                     continue
@@ -92,6 +97,7 @@ def run_pipeline(conn, deps: Deps, limit: int | None = None) -> RunStats:
             except Exception:
                 logger.warning("failed to process post %s", post.reddit_post_id, exc_info=True)
 
+        deps.sync_sheets()
         stats.items_deactivated = deps.revalidate(conn)
     except Exception as e:
         error = f"{type(e).__name__}: {e}"
@@ -105,11 +111,12 @@ def run_pipeline(conn, deps: Deps, limit: int | None = None) -> RunStats:
     return stats
 
 
-def build_default_deps() -> Deps:
+def build_default_deps(conn) -> Deps:
     import anthropic
+    import httpx as _httpx
 
     from . import judge as judge_mod
-    from . import revalidate, translate as translate_mod
+    from . import revalidate, sheets, translate as translate_mod
     from .weidian import fetch_rendered
 
     llm = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY
@@ -128,6 +135,8 @@ def build_default_deps() -> Deps:
         fetch_comments = reddit_html.fetch_post_comments
         logger.info("reddit transport: scrapling/camoufox HTML (no oauth creds)")
 
+    sheet_client = _httpx.Client()
+
     return Deps(
         discover=discover,
         fetch_comments=fetch_comments,
@@ -135,6 +144,7 @@ def build_default_deps() -> Deps:
         fetch_page=fetch_rendered,
         translate=lambda listing, context: translate_mod.translate_listing(llm, listing, context),
         revalidate=revalidate.revalidate_all,
+        sync_sheets=lambda: sheets.sync_spreadsheets(conn, llm, sheet_client),
     )
 
 
@@ -160,7 +170,7 @@ def main() -> None:
     args = parser.parse_args()
 
     conn = db.get_conn(os.environ["DATABASE_URL"])
-    stats = run_pipeline(conn, build_default_deps(), limit=args.limit)
+    stats = run_pipeline(conn, build_default_deps(conn), limit=args.limit)
     logger.info(
         "done: %s new posts seen, %s items added, %s deactivated",
         stats.posts_seen, stats.items_added, stats.items_deactivated,

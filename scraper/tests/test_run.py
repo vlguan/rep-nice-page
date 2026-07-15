@@ -26,6 +26,7 @@ def make_deps(posts, judge_result):
         fetch_page=lambda url: (LIVE_HTML, 200),
         translate=lambda listing, context: Translation("CH hoodie", "heavy fabric"),
         revalidate=lambda conn: 0,
+        sync_sheets=lambda: None,
     )
 
 
@@ -210,3 +211,13 @@ def test_reingest_refreshes_brand_and_category(conn):
     run_pipeline(conn, deps2)
     row = conn.execute("SELECT brand, category FROM items").fetchone()
     assert row == ("Hellstar", "clothing")
+
+
+def test_sheet_links_recorded_and_sync_stage_runs(conn):
+    posts = [make_post("p20", "check https://docs.google.com/spreadsheets/d/1SheetKeyAbcdefghijklmnop123456789/edit")]
+    deps = make_deps(posts, JudgeResult(True, [], None, None, None, ""))
+    called = []
+    deps.sync_sheets = lambda: called.append(True)
+    run_pipeline(conn, deps)
+    assert conn.execute("SELECT sheet_key FROM spreadsheets").fetchone()[0] == "1SheetKeyAbcdefghijklmnop123456789"
+    assert called == [True]
