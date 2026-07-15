@@ -3,3 +3,4 @@ anthropic>=0.40
 psycopg[binary]==3.2.*
 playwright==1.49.*
 pytest==8.*
+scrapling[fetchers]>=0.4

@@ -39,3 +39,7 @@ class WeidianListing:
 class Translation:
     title_en: str
     description_en: str
+    # Per-item classification (haul posts share one JudgeResult across many
+    # items, so brand/category are classified per listing here instead).
+    brand: str | None = None
+    category: str | None = None  # clothing | jewelry | shoes | accessory

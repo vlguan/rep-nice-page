@@ -3,17 +3,23 @@ import json
 import anthropic
 
 from .config import MODEL
+from .judge import VALID_CATEGORIES
 from .models import Translation, WeidianListing
 
-TRANSLATE_PROMPT = """Translate this Chinese Weidian fashion listing to natural English. Keep brand names and model names as-is. Convert marketing fluff to plain descriptive English.
+TRANSLATE_PROMPT = """Translate this Chinese Weidian fashion listing to natural English and classify the item. Keep brand names and model names as-is. Convert marketing fluff to plain descriptive English.
+
+For classification: `brand` is the brand the item replicates (e.g. "Chrome Hearts", "Hellstar"), inferred from the listing and the Reddit context below; null if unclear. Never answer "Multiple" — classify this one item.
 
 Respond with ONLY a JSON object, no other text:
-{{"title_en": string, "description_en": string}}
+{{"title_en": string, "description_en": string, "brand": string or null, "category": "clothing" | "jewelry" | "shoes" | "accessory" or null}}
 
 TITLE: {title_zh}
 
 DESCRIPTION:
 {description_zh}
+
+REDDIT CONTEXT (the post/comment that shared this listing):
+{context}
 """
 
 
@@ -39,13 +45,22 @@ def parse_translation(text: str) -> Translation:
     title = data.get("title_en")
     if not title or not isinstance(title, str):
         raise ValueError("title_en missing")
-    return Translation(title_en=title, description_en=str(data.get("description_en") or ""))
+    category = data.get("category")
+    return Translation(
+        title_en=title,
+        description_en=str(data.get("description_en") or ""),
+        brand=data.get("brand") or None,
+        category=category if category in VALID_CATEGORIES else None,
+    )
 
 
-def translate_listing(client: anthropic.Anthropic, listing: WeidianListing) -> Translation:
+def translate_listing(
+    client: anthropic.Anthropic, listing: WeidianListing, context: str = ""
+) -> Translation:
     prompt = TRANSLATE_PROMPT.format(
         title_zh=listing.title_zh,
         description_zh=listing.description_zh[:3000],
+        context=context[:1500] or "(none)",
     )
     last_err: Exception | None = None
     for _ in range(2):

@@ -18,7 +18,7 @@ class Deps:
     fetch_comments: Callable[[RedditPost], list[str]]
     judge: Callable[[RedditPost], "JudgeResult"]
     fetch_page: Callable[[str], tuple[str, int]]
-    translate: Callable[[WeidianListing], Translation]
+    translate: Callable[[WeidianListing, str], Translation]
     revalidate: Callable[..., int]
 
 
@@ -29,13 +29,13 @@ class RunStats:
     items_deactivated: int = 0
 
 
-def _ingest_item(conn, deps: Deps, url: str, judge_result, post_row_id: int) -> bool:
+def _ingest_item(conn, deps: Deps, url: str, context: str, judge_result, post_row_id: int) -> bool:
     html, status = deps.fetch_page(url)
     if detect_liveness(html, status) is not Liveness.LIVE:
         logger.info("skipping %s: not live at ingest", url)
         return False
     listing = parse_listing_html(html, url)
-    translation = deps.translate(listing)
+    translation = deps.translate(listing, context)
     item_id = db.upsert_item(conn, listing, translation, judge_result)
     db.link_mention(conn, item_id, post_row_id)
     return True
@@ -49,7 +49,7 @@ def run_pipeline(conn, deps: Deps, limit: int | None = None) -> RunStats:
     examined are left unrecorded so a later unlimited run picks them up fresh,
     and `stats.posts_seen` only counts posts actually examined.
     """
-    from .extract import extract_weidian_urls
+    from .extract import extract_urls_with_context
     from .judge import should_ingest
 
     started_at = datetime.now(timezone.utc)
@@ -67,9 +67,9 @@ def run_pipeline(conn, deps: Deps, limit: int | None = None) -> RunStats:
             stats.posts_seen += 1
             try:
                 post.comments = deps.fetch_comments(post)
-                text = "\n".join([post.title, post.body, *post.comments])
-                urls = extract_weidian_urls(text)
-                if not urls:
+                chunks = [f"{post.title}\n{post.body}", *post.comments]
+                url_contexts = extract_urls_with_context(chunks)
+                if not url_contexts:
                     db.insert_post(conn, post, None, None)
                     continue
                 processed += 1
@@ -83,9 +83,9 @@ def run_pipeline(conn, deps: Deps, limit: int | None = None) -> RunStats:
                 post_row_id = db.insert_post(conn, post, sentiment, judge_result.quality_summary)
                 if not should_ingest(judge_result):
                     continue
-                for url in urls:
+                for url, context in url_contexts:
                     try:
-                        if _ingest_item(conn, deps, url, judge_result, post_row_id):
+                        if _ingest_item(conn, deps, url, context, judge_result, post_row_id):
                             stats.items_added += 1
                     except Exception:
                         logger.warning("failed to ingest %s", url, exc_info=True)
@@ -109,18 +109,31 @@ def build_default_deps() -> Deps:
     import anthropic
 
     from . import judge as judge_mod
-    from . import reddit, revalidate, translate as translate_mod
+    from . import revalidate, translate as translate_mod
     from .weidian import fetch_rendered
 
-    http_client = reddit.oauth_client()  # reads REDDIT_CLIENT_ID/SECRET
     llm = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY
 
+    if os.environ.get("REDDIT_CLIENT_ID") and os.environ.get("REDDIT_CLIENT_SECRET"):
+        from . import reddit
+
+        http_client = reddit.oauth_client()
+        discover = lambda: reddit.discover_posts(http_client)  # noqa: E731
+        fetch_comments = lambda post: reddit.fetch_post_comments(http_client, post)  # noqa: E731
+        logger.info("reddit transport: official OAuth API")
+    else:
+        from . import reddit_html
+
+        discover = reddit_html.discover_posts
+        fetch_comments = reddit_html.fetch_post_comments
+        logger.info("reddit transport: scrapling/camoufox HTML (no oauth creds)")
+
     return Deps(
-        discover=lambda: reddit.discover_posts(http_client),
-        fetch_comments=lambda post: reddit.fetch_post_comments(http_client, post),
+        discover=discover,
+        fetch_comments=fetch_comments,
         judge=lambda post: judge_mod.judge_post(llm, post),
         fetch_page=fetch_rendered,
-        translate=lambda listing: translate_mod.translate_listing(llm, listing),
+        translate=lambda listing, context: translate_mod.translate_listing(llm, listing, context),
         revalidate=revalidate.revalidate_all,
     )
 

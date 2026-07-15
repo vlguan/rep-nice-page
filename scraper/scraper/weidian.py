@@ -39,13 +39,34 @@ def _meta(html: str, prop: str) -> str | None:
     return None
 
 
+# Titles of SPA shell / error pages that carry no product information;
+# dead and nonexistent listings render with "商品详情".
+GENERIC_TITLES = {"商品详情", "微店", "weidian"}
+
+
+def _page_title(html: str) -> str | None:
+    match = re.search(r"<title[^>]*>(.*?)</title>", html, re.I | re.S)
+    if not match:
+        return None
+    title = re.sub(r"\s+", " ", match.group(1)).strip()
+    if not title or title.lower() in GENERIC_TITLES:
+        return None
+    return title
+
+
+def _title_signal(html: str) -> str | None:
+    # Weidian's rendered mobile pages stopped emitting og:title (2026-07);
+    # fall back to the plain <title> tag, ignoring generic shell titles.
+    return _meta(html, "og:title") or _page_title(html)
+
+
 def detect_liveness(html: str, status_code: int) -> Liveness:
     if status_code == 404:
         return Liveness.DEAD
     if status_code >= 400:
         return Liveness.UNKNOWN
     has_dead_marker = any(marker in html for marker in DEAD_MARKERS)
-    has_og_title = bool(_meta(html, "og:title"))
+    has_og_title = bool(_title_signal(html))
     if has_dead_marker and has_og_title:
         # Conflicting signals (Weidian is an SPA, so removal-notice strings can
         # appear inside <script> bundles even on live pages) — never
@@ -59,7 +80,7 @@ def detect_liveness(html: str, status_code: int) -> Liveness:
 
 
 def parse_listing_html(html: str, url: str) -> WeidianListing:
-    title = _meta(html, "og:title")
+    title = _title_signal(html)
     if not title:
         raise ValueError(f"no listing title found at {url}")
 
@@ -71,6 +92,11 @@ def parse_listing_html(html: str, url: str) -> WeidianListing:
         price_matches = list(re.finditer(r'"price"\s*:\s*"?(\d+(?:\.\d+)?)', html))
         if price_matches:
             price = float(price_matches[-1].group(1))
+        else:
+            # Rendered mobile pages carry the price only as display text.
+            yen_match = re.search(r"[¥￥]\s*(\d+(?:\.\d+)?)", html)
+            if yen_match:
+                price = float(yen_match.group(1))
 
     images: list[str] = []
     og_image = _meta(html, "og:image")

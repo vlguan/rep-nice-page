@@ -75,3 +75,50 @@ def test_price_from_og_meta_wins():
         '<script>{"price":"888"}</script></body></html>'
     )
     assert parse_listing_html(html, URL).price_cny == 199.5
+
+# Weidian's rendered mobile pages no longer emit og:title; the plain <title>
+# tag carries the product name on live pages and the generic "商品详情" on
+# dead/nonexistent ones.
+
+def test_plain_title_tag_is_live():
+    html = "<html><head><title>CH双面帽衫 高克重</title></head><body></body></html>"
+    assert detect_liveness(html, 200) is Liveness.LIVE
+
+
+def test_generic_title_is_unknown():
+    html = "<html><head><title>商品详情</title></head><body></body></html>"
+    assert detect_liveness(html, 200) is Liveness.UNKNOWN
+
+
+def test_dead_marker_with_real_title_is_ambiguous():
+    html = (
+        "<html><head><title>CH双面帽衫</title></head>"
+        '<body><script>var msg="商品已下架"</script></body></html>'
+    )
+    assert detect_liveness(html, 200) is Liveness.UNKNOWN
+
+
+def test_dead_marker_with_generic_title_is_dead():
+    html = (
+        "<html><head><title>商品详情</title></head>"
+        "<body><p>商品不存在</p></body></html>"
+    )
+    assert detect_liveness(html, 200) is Liveness.DEAD
+
+
+def test_parse_listing_from_title_tag():
+    html = (
+        "<html><head><title> CH双面帽衫 高克重 </title></head>"
+        '<body><script>{"price":"268","itemID":"7123456789"}</script></body></html>'
+    )
+    listing = parse_listing_html(html, URL)
+    assert listing.title_zh == "CH双面帽衫 高克重"
+    assert listing.price_cny == 268.0
+
+
+def test_parse_price_from_rendered_yen_text():
+    html = (
+        "<html><head><title>CH双面帽衫</title></head>"
+        '<body><div class="price">¥ 180</div><div>¥ 180</div></body></html>'
+    )
+    assert parse_listing_html(html, URL).price_cny == 180.0

@@ -24,7 +24,7 @@ def make_deps(posts, judge_result):
         fetch_comments=lambda post: ["nice quality"],
         judge=lambda post: judge_result,
         fetch_page=lambda url: (LIVE_HTML, 200),
-        translate=lambda listing: Translation("CH hoodie", "heavy fabric"),
+        translate=lambda listing, context: Translation("CH hoodie", "heavy fabric"),
         revalidate=lambda conn: 0,
     )
 
@@ -158,3 +158,55 @@ def test_load_env_file_sets_without_override(tmp_path, monkeypatch):
     assert os.environ["REDDIT_CLIENT_ID"] == "abc123"
     assert os.environ["REDDIT_CLIENT_SECRET"] == "s3cret"
     assert os.environ["EXISTING"] == "shellvalue"  # shell wins over file
+
+
+def test_translate_gets_url_context_and_its_classification_is_stored(conn):
+    posts = [make_post("p10", "my summer haul QC")]
+    judge = JudgeResult(True, [], "Multiple", None, None, "good haul")
+    deps = make_deps(posts, judge)
+    deps.fetch_comments = lambda post: [
+        "W2C the Hellstar hoodie https://weidian.com/item.html?itemID=1001",
+        "AMIRI jeans https://weidian.com/item.html?itemID=1002",
+    ]
+    contexts = []
+
+    def translate(listing, context):
+        contexts.append(context)
+        brand = "Hellstar" if "Hellstar" in context else "AMIRI"
+        return Translation(f"{brand} item", "d", brand=brand, category="clothing")
+
+    deps.translate = translate
+    stats = run_pipeline(conn, deps)
+    assert stats.items_added == 2
+    assert any("Hellstar" in c for c in contexts)
+    assert any("AMIRI" in c for c in contexts)
+    rows = dict(conn.execute("SELECT weidian_item_id, brand FROM items").fetchall())
+    assert rows == {"1001": "Hellstar", "1002": "AMIRI"}
+
+
+def test_judge_brand_used_when_translation_has_none(conn):
+    posts = [make_post("p11", "https://weidian.com/item.html?itemID=1101")]
+    judge = JudgeResult(True, [], "Chrome Hearts", "clothing", "hoodie", "good")
+    deps = make_deps(posts, judge)
+    deps.translate = lambda listing, context: Translation("hoodie", "d")
+    run_pipeline(conn, deps)
+    row = conn.execute("SELECT brand, category FROM items").fetchone()
+    assert row == ("Chrome Hearts", "clothing")
+
+
+def test_reingest_refreshes_brand_and_category(conn):
+    judge = JudgeResult(True, [], "Multiple", None, None, "")
+    posts = [make_post("p12", "https://weidian.com/item.html?itemID=1201")]
+    deps = make_deps(posts, judge)
+    deps.translate = lambda listing, context: Translation("hoodie", "d")
+    run_pipeline(conn, deps)
+    assert conn.execute("SELECT brand FROM items").fetchone()[0] == "Multiple"
+
+    posts2 = [make_post("p13", "https://weidian.com/item.html?itemID=1201")]
+    deps2 = make_deps(posts2, judge)
+    deps2.translate = lambda listing, context: Translation(
+        "hoodie", "d", brand="Hellstar", category="clothing"
+    )
+    run_pipeline(conn, deps2)
+    row = conn.execute("SELECT brand, category FROM items").fetchone()
+    assert row == ("Hellstar", "clothing")

@@ -62,6 +62,8 @@ def upsert_item(
               title_zh = EXCLUDED.title_zh,
               title_en = EXCLUDED.title_en,
               description_en = EXCLUDED.description_en,
+              brand = EXCLUDED.brand,
+              category = EXCLUDED.category,
               price_cny = EXCLUDED.price_cny,
               image_urls = EXCLUDED.image_urls,
               last_validated_at = now(),
@@ -71,7 +73,11 @@ def upsert_item(
         (
             listing.weidian_url, listing.weidian_item_id, listing.title_zh,
             translation.title_en, translation.description_en,
-            judge.brand, judge.category, listing.price_cny,
+            # per-item classification from translation wins over the
+            # judge's single post-level guess (wrong for multi-item hauls)
+            translation.brand or judge.brand,
+            translation.category or judge.category,
+            listing.price_cny,
             listing.seller_name, json.dumps(listing.image_urls),
         ),
     ).fetchone()
