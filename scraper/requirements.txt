@@ -4,3 +4,4 @@ psycopg[binary]==3.2.*
 playwright==1.49.*
 pytest==8.*
 scrapling[fetchers]>=0.4
+openpyxl==3.1.*
