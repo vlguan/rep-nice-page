@@ -6,6 +6,20 @@ DEAD_HTML = "<html><body>商品已下架</body></html>"
 LIVE_HTML = '<html><head><meta property="og:title" content="帽衫"/></head><body></body></html>'
 
 
+def _mark_due(conn, item_id):
+    # get_items_for_validation only selects items whose last_validated_at is
+    # NULL or stale; upsert_item stamps it to now(), so fixtures must be
+    # reset to look "due" for these revalidate_all-driven tests.
+    conn.execute("UPDATE items SET last_validated_at = NULL WHERE id = %s", (item_id,))
+
+
+def _status_map(conn, ids):
+    rows = conn.execute(
+        "SELECT id, status FROM items WHERE id = ANY(%s)", (list(ids),)
+    ).fetchall()
+    return dict(rows)
+
+
 def test_decide_status():
     assert decide_status(Liveness.DEAD, "active") == "inactive"
     assert decide_status(Liveness.LIVE, "inactive") == "active"
@@ -52,15 +66,15 @@ def test_revalidate_all_deactivates_and_revives(conn):
     dead_id = db.upsert_item(conn, make("https://weidian.com/item.html?itemID=1"), t, j)
     live_id = db.upsert_item(conn, make("https://weidian.com/item.html?itemID=2"), t, j)
     db.set_item_status(conn, live_id, "inactive")  # will revive
+    _mark_due(conn, dead_id)
+    _mark_due(conn, live_id)
 
     def fetch(url):
         return (DEAD_HTML, 200) if "itemID=1" in url else (LIVE_HTML, 200)
 
     deactivated = revalidate_all(conn, fetch=fetch, render=fetch)
     assert deactivated == 1
-    statuses = dict(
-        (r[0], r[2]) for r in db.get_items_for_validation(conn)
-    )
+    statuses = _status_map(conn, [dead_id, live_id])
     assert statuses[dead_id] == "inactive"
     assert statuses[live_id] == "active"
 
@@ -74,6 +88,8 @@ def test_db_failure_on_one_item_does_not_abort_rest(conn, monkeypatch):
     j = JudgeResult(True, [], None, None, None, "")
     first = db.upsert_item(conn, WeidianListing("https://weidian.com/item.html?itemID=1", None, "t", "", None, None, []), t, j)
     second = db.upsert_item(conn, WeidianListing("https://weidian.com/item.html?itemID=2", None, "t", "", None, None, []), t, j)
+    _mark_due(conn, first)
+    _mark_due(conn, second)
 
     real_set = db.set_item_status
 
@@ -88,7 +104,7 @@ def test_db_failure_on_one_item_does_not_abort_rest(conn, monkeypatch):
     deactivated = revalidate_all(conn, fetch=lambda u: (dead, 200), render=lambda u: (dead, 200))
 
     assert deactivated == 1  # only the item whose write succeeded
-    statuses = {r[0]: r[2] for r in db.get_items_for_validation(conn)}
+    statuses = _status_map(conn, [first, second])
     assert statuses[second] == "inactive"  # later item still processed
     assert statuses[first] == "active"     # failed write left it unchanged
 
@@ -109,11 +125,13 @@ def test_circuit_breaker_trips_when_all_active_items_appear_dead(conn):
         )
         for i in range(5)
     ]
+    for item_id in ids:
+        _mark_due(conn, item_id)
 
     deactivated = revalidate_all(conn, fetch=lambda u: (DEAD_HTML, 200), render=lambda u: (DEAD_HTML, 200))
 
     assert deactivated == 0
-    statuses = {r[0]: r[2] for r in db.get_items_for_validation(conn)}
+    statuses = _status_map(conn, ids)
     for item_id in ids:
         assert statuses[item_id] == "active"
 
@@ -134,6 +152,8 @@ def test_circuit_breaker_does_not_trip_for_single_deactivation_among_five(conn):
         )
         for i in range(5)
     ]
+    for item_id in ids:
+        _mark_due(conn, item_id)
 
     def fetch(url):
         return (DEAD_HTML, 200) if url.endswith("itemID=0") else (LIVE_HTML, 200)
@@ -141,7 +161,7 @@ def test_circuit_breaker_does_not_trip_for_single_deactivation_among_five(conn):
     deactivated = revalidate_all(conn, fetch=fetch, render=fetch)
 
     assert deactivated == 1
-    statuses = {r[0]: r[2] for r in db.get_items_for_validation(conn)}
+    statuses = _status_map(conn, ids)
     assert statuses[ids[0]] == "inactive"
     for item_id in ids[1:]:
         assert statuses[item_id] == "active"

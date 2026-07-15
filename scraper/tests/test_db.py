@@ -38,8 +38,23 @@ def test_upsert_item_and_mention(conn):
 
     assert db.upsert_item(conn, LISTING, TRANSLATION, JUDGE) == item_id
 
+    row = conn.execute(
+        "SELECT id, product_url, status FROM items WHERE id = %s", (item_id,)
+    ).fetchone()
+    assert row == (item_id, LISTING.weidian_url, "active")
+
+
+def test_get_items_for_validation_skips_taobao_and_fresh(conn):
+    from scraper import db
+
+    conn.execute(
+        "INSERT INTO items (product_url, platform, status, last_validated_at) VALUES"
+        " ('https://item.taobao.com/item.htm?id=1', 'taobao', 'active', NULL),"
+        " ('https://weidian.com/item.html?itemID=2', 'weidian', 'active', now()),"
+        " ('https://weidian.com/item.html?itemID=3', 'weidian', 'active', now() - interval '8 days')"
+    )
     rows = db.get_items_for_validation(conn)
-    assert rows == [(item_id, LISTING.weidian_url, "active")]
+    assert [r[1] for r in rows] == ["https://weidian.com/item.html?itemID=3"]
 
 
 def test_status_transitions(conn):

@@ -180,7 +180,7 @@ def test_translate_gets_url_context_and_its_classification_is_stored(conn):
     assert stats.items_added == 2
     assert any("Hellstar" in c for c in contexts)
     assert any("AMIRI" in c for c in contexts)
-    rows = dict(conn.execute("SELECT weidian_item_id, brand FROM items").fetchall())
+    rows = dict(conn.execute("SELECT platform_item_id, brand FROM items").fetchall())
     assert rows == {"1001": "Hellstar", "1002": "AMIRI"}
 
 

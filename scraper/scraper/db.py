@@ -52,11 +52,11 @@ def upsert_item(
     row = conn.execute(
         """
         INSERT INTO items
-          (weidian_url, weidian_item_id, title_zh, title_en, description_en,
+          (product_url, platform_item_id, platform, title_zh, title_en, description_en,
            brand, category, price_cny, seller_name, image_urls,
            status, last_validated_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'active', now())
-        ON CONFLICT (weidian_url) DO UPDATE
+        VALUES (%s, %s, 'weidian', %s, %s, %s, %s, %s, %s, %s, %s, 'active', now())
+        ON CONFLICT (product_url) DO UPDATE
           SET status = 'active',
               dead_since = NULL,
               title_zh = EXCLUDED.title_zh,
@@ -95,8 +95,16 @@ def link_mention(conn: psycopg.Connection, item_id: int, post_row_id: int) -> No
 
 
 def get_items_for_validation(conn: psycopg.Connection) -> list[tuple[int, str, str]]:
+    # Weidian only (taobao pages can't be checked); stale-first, capped so a
+    # large catalog can't blow up the nightly run.
     return conn.execute(
-        "SELECT id, weidian_url, status FROM items ORDER BY id"
+        """
+        SELECT id, product_url, status FROM items
+        WHERE platform = 'weidian'
+          AND (last_validated_at IS NULL OR last_validated_at < now() - interval '7 days')
+        ORDER BY last_validated_at NULLS FIRST, id
+        LIMIT 500
+        """
     ).fetchall()
 
 
