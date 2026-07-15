@@ -137,3 +137,41 @@ def test_label_two_lines_above_url_with_connector_and_reviews():
     assert "Prada Sunglasses" in contexts["https://weidian.com/item.html?itemID=222"]
     # previous item's label must not bleed into the next item's context
     assert "Prada Set" not in contexts["https://weidian.com/item.html?itemID=222"]
+
+
+def test_extract_sheet_keys():
+    from scraper.extract import extract_sheet_keys
+
+    text = (
+        "sheet https://docs.google.com/spreadsheets/d/1AbC-dEf_2345678901234567890123456789012/edit#gid=0\n"
+        "again https://docs.google.com/spreadsheets/d/1AbC-dEf_2345678901234567890123456789012/htmlview\n"
+        "other https://docs.google.com/spreadsheets/d/2XyZ-9876543210987654321098765432109876/edit"
+    )
+    assert extract_sheet_keys(text) == [
+        "1AbC-dEf_2345678901234567890123456789012",
+        "2XyZ-9876543210987654321098765432109876",
+    ]
+    assert extract_sheet_keys("no sheets here") == []
+
+
+def test_resolve_product_link_direct():
+    from scraper.extract import resolve_product_link
+
+    assert resolve_product_link("https://weidian.com/item.html?itemID=123&x=1") == (
+        "weidian", "https://weidian.com/item.html?itemID=123")
+    assert resolve_product_link("https://item.taobao.com/item.htm?spm=a21n&id=456") == (
+        "taobao", "https://item.taobao.com/item.htm?id=456")
+    assert resolve_product_link("https://example.com/whatever") is None
+
+
+def test_resolve_product_link_unwraps_agents():
+    from scraper.extract import resolve_product_link
+
+    wrapped = "https://cnfans.com/product/?shop_type=weidian&id=123"
+    assert resolve_product_link(wrapped) == ("weidian", "https://weidian.com/item.html?itemID=123")
+    assert resolve_product_link("https://www.acbuy.com/product?id=456&source=TB") == (
+        "taobao", "https://item.taobao.com/item.htm?id=456")
+    url_param = "https://www.superbuy.com/en/page/buy/?url=https%3A%2F%2Fweidian.com%2Fitem.html%3FitemID%3D789"
+    assert resolve_product_link(url_param) == ("weidian", "https://weidian.com/item.html?itemID=789")
+    nested = "https://mulebuy.com/product/?url=https%3A%2F%2Fitem.taobao.com%2Fitem.htm%3Fid%3D42"
+    assert resolve_product_link(nested) == ("taobao", "https://item.taobao.com/item.htm?id=42")
