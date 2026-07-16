@@ -41,6 +41,7 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
         <div className="space-y-4">
           {item.brand && <span className="inline-block text-xs font-medium bg-zinc-100 rounded-full px-2 py-0.5">{item.brand}</span>}
           <h1 className="text-xl font-bold">{item.titleEn ?? "Untitled"}</h1>
+          {item.descriptionEn && <p className="text-sm text-zinc-700 whitespace-pre-line">{item.descriptionEn}</p>}
           {price !== null && (
             <p className="text-lg">
               ¥{price.toFixed(0)} <span className="text-zinc-500 text-sm">≈ ${cnyToUsd(price).toFixed(0)} USD</span>
@@ -73,8 +74,6 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
             View original on {item.platform === "taobao" ? "Taobao" : "Weidian"}
           </a>
           <GuideButton label="New to agents? How buying works" />
-
-          {item.descriptionEn && <p className="text-sm text-zinc-700 whitespace-pre-line">{item.descriptionEn}</p>}
 
           {reviews.length > 0 && (
             <div>
