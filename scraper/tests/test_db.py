@@ -134,3 +134,21 @@ def test_mark_sheet_synced_gone_after_repeated_error(conn):
     assert conn.execute("SELECT status FROM spreadsheets WHERE id=%s", (sid,)).fetchone()[0] == "active"
     db.mark_sheet_synced(conn, sid, error="403 Forbidden")
     assert conn.execute("SELECT status FROM spreadsheets WHERE id=%s", (sid,)).fetchone()[0] == "gone"
+
+
+def test_upsert_item_persists_and_refreshes_rebuy_rate(conn):
+    from scraper import db
+    from scraper.models import Translation, WeidianListing
+
+    def listing(rate):
+        return WeidianListing(
+            weidian_url="https://weidian.com/item.html?itemID=901", weidian_item_id="901",
+            title_zh="t", description_zh="", price_cny=None, seller_name=None,
+            image_urls=[], seller_rebuy_rate=rate,
+        )
+
+    judge = JudgeResult(True, [], None, None, None, "")
+    db.upsert_item(conn, listing(61), Translation("a", ""), judge)
+    assert conn.execute("SELECT seller_rebuy_rate FROM items").fetchone()[0] == 61
+    db.upsert_item(conn, listing(58), Translation("a", ""), judge)
+    assert conn.execute("SELECT seller_rebuy_rate FROM items").fetchone()[0] == 58

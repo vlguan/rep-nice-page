@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { GuideButton } from "@/components/GuideButton";
 import { ItemImage } from "@/components/ItemImage";
 import { getItemDetail } from "@/db/queries";
 import { cnyToUsd } from "@/lib/format";
@@ -46,6 +47,14 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
             </p>
           )}
           {item.sellerName && <p className="text-sm text-zinc-500">Seller: {item.sellerName}</p>}
+          {item.sellerRebuyRate !== null && (
+            <p className="text-sm">
+              <span className="font-medium text-emerald-700">{item.sellerRebuyRate}% repeat customers</span>{" "}
+              <span className="text-zinc-400">
+                — share of this vendor&apos;s buyers who come back and order again
+              </span>
+            </p>
+          )}
 
           <a
             href={superbuyUrl(item.productUrl, item.platform)}
@@ -63,6 +72,7 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
           >
             View original on {item.platform === "taobao" ? "Taobao" : "Weidian"}
           </a>
+          <GuideButton label="New to agents? How buying works" />
 
           {item.descriptionEn && <p className="text-sm text-zinc-700 whitespace-pre-line">{item.descriptionEn}</p>}
 

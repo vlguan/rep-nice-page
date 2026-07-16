@@ -1,4 +1,5 @@
 import { FilterBar } from "@/components/FilterBar";
+import { GuideButton } from "@/components/GuideButton";
 import { ItemCard } from "@/components/ItemCard";
 import { StagingCard } from "@/components/StagingCard";
 import { flagRowsForPromotion, getFilterOptions, getItems, searchItems, searchStagingRows, type SortKey } from "@/db/queries";
@@ -20,11 +21,14 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 space-y-6">
-      <header>
-        <h1 className="text-2xl font-bold">Digital Canal St</h1>
-        <p className="text-sm text-zinc-500">
-          trending rep fashion, begin chinamaxxing
-        </p>
+      <header className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">Digital Canal St</h1>
+          <p className="text-sm text-zinc-500">
+            trending rep fashion, begin chinamaxxing
+          </p>
+        </div>
+        <GuideButton />
       </header>
       <FilterBar
         brands={filterOptions.brands}

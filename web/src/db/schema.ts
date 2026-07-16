@@ -14,6 +14,7 @@ export const items = pgTable("items", {
   category: text("category"), // clothing | jewelry | shoes | accessory
   priceCny: numeric("price_cny"),
   sellerName: text("seller_name"),
+  sellerRebuyRate: integer("seller_rebuy_rate"), // % of shop's buyers who buy again
   imageUrls: jsonb("image_urls").$type<string[]>(),
   status: text("status").notNull().default("active"), // active | inactive
   lastValidatedAt: timestamp("last_validated_at", { withTimezone: true }),

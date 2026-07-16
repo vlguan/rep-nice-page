@@ -138,6 +138,12 @@ def parse_listing_html(html: str, url: str) -> WeidianListing:
     ids = extract_item_ids(url)
     id_match = re.search(r'"itemID"\s*:\s*"?(\d+)', html)
 
+    # shop-header stat inside the back-rate wrapper ("61% Return rate"):
+    # the share of the shop's buyers who purchase from it again
+    rebuy_match = re.search(
+        r'class="back-rate"[^>]*>\s*<span[^>]*class="shop-detail-str"[^>]*>\s*(\d+)%', html
+    )
+
     return WeidianListing(
         weidian_url=url,
         weidian_item_id=ids[0] if ids else (id_match.group(1) if id_match else None),
@@ -146,6 +152,7 @@ def parse_listing_html(html: str, url: str) -> WeidianListing:
         price_cny=price,
         seller_name=seller,
         image_urls=images,
+        seller_rebuy_rate=int(rebuy_match.group(1)) if rebuy_match else None,
     )
 
 

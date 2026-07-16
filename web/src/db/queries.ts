@@ -17,6 +17,7 @@ export type ItemCardData = {
 
 export type ItemDetail = ItemCardData & {
   descriptionEn: string | null;
+  sellerRebuyRate: number | null;
   productUrl: string;
   platform: string;
   sellerName: string | null;
@@ -76,6 +77,7 @@ export async function getItemDetail(id: number): Promise<ItemDetail | null> {
       priceCny: items.priceCny,
       imageUrls: items.imageUrls,
       descriptionEn: items.descriptionEn,
+      sellerRebuyRate: items.sellerRebuyRate,
       productUrl: items.productUrl,
       platform: items.platform,
       sellerName: items.sellerName,

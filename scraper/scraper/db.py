@@ -53,9 +53,9 @@ def upsert_item(
         """
         INSERT INTO items
           (product_url, platform_item_id, platform, title_zh, title_en, description_en,
-           brand, category, price_cny, seller_name, image_urls,
+           brand, category, price_cny, seller_name, seller_rebuy_rate, image_urls,
            status, last_validated_at)
-        VALUES (%s, %s, 'weidian', %s, %s, %s, %s, %s, %s, %s, %s, 'active', now())
+        VALUES (%s, %s, 'weidian', %s, %s, %s, %s, %s, %s, %s, %s, %s, 'active', now())
         ON CONFLICT (product_url) DO UPDATE
           SET status = 'active',
               dead_since = NULL,
@@ -65,6 +65,7 @@ def upsert_item(
               brand = EXCLUDED.brand,
               category = EXCLUDED.category,
               price_cny = EXCLUDED.price_cny,
+              seller_rebuy_rate = EXCLUDED.seller_rebuy_rate,
               image_urls = EXCLUDED.image_urls,
               last_validated_at = now(),
               updated_at = now()
@@ -78,7 +79,7 @@ def upsert_item(
             translation.brand or judge.brand,
             translation.category or judge.category,
             listing.price_cny,
-            listing.seller_name, json.dumps(listing.image_urls),
+            listing.seller_name, listing.seller_rebuy_rate, json.dumps(listing.image_urls),
         ),
     ).fetchone()
     return row[0]

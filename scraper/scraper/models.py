@@ -33,6 +33,8 @@ class WeidianListing:
     price_cny: float | None
     seller_name: str | None
     image_urls: list[str]
+    # % of the shop's buyers who purchase again ("Return rate" on the page)
+    seller_rebuy_rate: int | None = None
 
 
 @dataclass

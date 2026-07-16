@@ -144,3 +144,20 @@ def test_parse_listing_images_fallback_sweep_when_no_first_img():
     # pages without first-img keep the old og:image + geilicdn sweep
     listing = parse_listing_html(LIVE_HTML, URL)
     assert "https://si.geilicdn.com/item123-main.jpg" in listing.image_urls
+
+
+def test_parse_listing_extracts_seller_rebuy_rate():
+    html = (
+        "<html><head><title>帽衫</title></head><body>"
+        '<span class="collect-count"><span class="shop-detail-str">86</span> <em>followers</em></span>'
+        '<span class="back-rate"><span data-v-cac35026="" class="shop-detail-str">61%</span> <em>Return rate</em></span>'
+        '<span class="deliver-time"><span class="shop-detail-str">72小时内</span> <em>Shipping</em></span>'
+        "</body></html>"
+    )
+    listing = parse_listing_html(html, URL)
+    assert listing.seller_rebuy_rate == 61
+
+
+def test_parse_listing_rebuy_rate_absent_is_none():
+    listing = parse_listing_html(LIVE_HTML, URL)
+    assert listing.seller_rebuy_rate is None
