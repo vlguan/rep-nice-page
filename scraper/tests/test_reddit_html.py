@@ -2,7 +2,7 @@ import pathlib
 
 from scrapling.parser import Selector
 
-from scraper.reddit_html import parse_listing_page, parse_post_page
+from scraper.reddit_html import discover_posts, parse_listing_page, parse_post_page, parse_search_page
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 
@@ -29,6 +29,50 @@ def test_parse_listing_page_empty():
     posts, next_url = parse_listing_page(Selector(content="<html><body></body></html>"))
     assert posts == []
     assert next_url is None
+
+
+def test_parse_search_page():
+    posts, next_url = parse_search_page(load("reddit_search.html"))
+    assert len(posts) == 2  # subreddit result (no comments link) skipped
+    p = posts[0]
+    assert p.reddit_post_id == "abc123"
+    assert p.permalink == "https://reddit.com/r/FashionReps/comments/abc123/the_big_w2c_spreadsheet/"
+    assert p.title == "The big W2C spreadsheet"
+    assert p.subreddit == "FashionReps"
+    assert posts[1].reddit_post_id == "def456"
+    assert next_url == "https://old.reddit.com/r/FashionReps/search?q=spreadsheet&count=25&after=t3_def456"
+
+
+def test_parse_search_page_empty():
+    posts, next_url = parse_search_page(Selector(content="<html><body></body></html>"))
+    assert posts == []
+    assert next_url is None
+
+
+def test_discover_posts_daily_vs_backfill_and_search(monkeypatch):
+    """Daily hits week+hot+search; backfill adds top?t=month. All deduped."""
+    import scraper.reddit_html as rh
+
+    fetched: list[str] = []
+
+    def fake_fetch(url):
+        fetched.append(url)
+        return Selector(content="<html><body></body></html>")  # empty -> one hit each
+
+    monkeypatch.setattr(rh, "_fetch", fake_fetch)
+    monkeypatch.setattr(rh, "REQUEST_DELAY", 0)
+
+    fetched.clear()
+    discover_posts(backfill=False)
+    daily = "\n".join(fetched)
+    assert "/top/?t=week" in daily
+    assert "/hot/" in daily
+    assert "/top/?t=month" not in daily
+    assert daily.count("/search?q=") == 4  # one per SEARCH_QUERIES entry
+
+    fetched.clear()
+    discover_posts(backfill=True)
+    assert any("/top/?t=month" in u for u in fetched)
 
 
 def test_parse_post_page_selftext_comments_and_hrefs():

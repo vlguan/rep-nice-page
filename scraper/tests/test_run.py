@@ -20,7 +20,7 @@ def make_post(pid, body, score=100):
 
 def make_deps(posts, judge_result):
     return Deps(
-        discover=lambda: posts,
+        discover=lambda backfill=False: posts,
         fetch_comments=lambda post: ["nice quality"],
         judge=lambda post: judge_result,
         fetch_page=lambda url: (LIVE_HTML, 200),
@@ -103,6 +103,15 @@ def test_limit_caps_candidate_posts(conn):
     judge = JudgeResult(True, [], None, "clothing", None, "")
     stats = run_pipeline(conn, make_deps(posts, judge), limit=3)
     assert stats.items_added == 3
+
+
+def test_backfill_flag_passed_to_discover(conn):
+    seen = []
+    deps = make_deps([], JudgeResult(True, [], None, None, None, ""))
+    deps.discover = lambda backfill=False: seen.append(backfill) or []
+    run_pipeline(conn, deps, backfill=True)
+    run_pipeline(conn, deps)  # default is lean daily
+    assert seen == [True, False]
 
 
 def test_run_recorded(conn):

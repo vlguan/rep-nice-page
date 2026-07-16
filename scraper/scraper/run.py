@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class Deps:
-    discover: Callable[[], list[RedditPost]]
+    discover: Callable[[bool], list[RedditPost]]
     fetch_comments: Callable[[RedditPost], list[str]]
     judge: Callable[[RedditPost], "JudgeResult"]
     fetch_page: Callable[[str], tuple[str, int]]
@@ -44,13 +44,16 @@ def _ingest_item(conn, deps: Deps, url: str, context: str, judge_result, post_ro
     return True
 
 
-def run_pipeline(conn, deps: Deps, limit: int | None = None) -> RunStats:
+def run_pipeline(conn, deps: Deps, limit: int | None = None, backfill: bool = False) -> RunStats:
     """Run one discover -> judge -> ingest -> revalidate pass.
 
     When `limit` is set (manual smoke runs only), the run stops examining
     further posts once `limit` candidates have been processed; posts never
     examined are left unrecorded so a later unlimited run picks them up fresh,
     and `stats.posts_seen` only counts posts actually examined.
+
+    `backfill` is the one-time heavy seed: it widens discovery to the full
+    top-of-month sweep. Daily runs leave it False.
     """
     from .extract import extract_sheet_keys, extract_urls_with_context
     from .judge import should_ingest
@@ -59,7 +62,7 @@ def run_pipeline(conn, deps: Deps, limit: int | None = None) -> RunStats:
     stats = RunStats()
     error: str | None = None
     try:
-        posts = deps.discover()
+        posts = deps.discover(backfill)
         seen = db.seen_post_ids(conn, [p.reddit_post_id for p in posts])
         new_posts = [p for p in posts if p.reddit_post_id not in seen]
 
@@ -125,19 +128,13 @@ def build_default_deps(conn) -> Deps:
 
     llm = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY
 
-    if os.environ.get("REDDIT_CLIENT_ID") and os.environ.get("REDDIT_CLIENT_SECRET"):
-        from . import reddit
+    # Reddit's OAuth app credentials are effectively unobtainable for this use,
+    # so discovery always goes through the scrapling/camoufox HTML transport.
+    from . import reddit_html
 
-        http_client = reddit.oauth_client()
-        discover = lambda: reddit.discover_posts(http_client)  # noqa: E731
-        fetch_comments = lambda post: reddit.fetch_post_comments(http_client, post)  # noqa: E731
-        logger.info("reddit transport: official OAuth API")
-    else:
-        from . import reddit_html
-
-        discover = reddit_html.discover_posts
-        fetch_comments = reddit_html.fetch_post_comments
-        logger.info("reddit transport: scrapling/camoufox HTML (no oauth creds)")
+    discover = reddit_html.discover_posts
+    fetch_comments = reddit_html.fetch_post_comments
+    logger.info("reddit transport: scrapling/camoufox HTML")
 
     sheet_client = _httpx.Client()
 
@@ -180,10 +177,15 @@ def main() -> None:
     load_env_file()
     parser = argparse.ArgumentParser(description="rep-nice-page daily pipeline")
     parser.add_argument("--limit", type=int, default=None, help="max candidate posts to process")
+    parser.add_argument(
+        "--backfill",
+        action="store_true",
+        help="one-time heavy seed: widen discovery to the full top-of-month sweep",
+    )
     args = parser.parse_args()
 
     conn = db.get_conn(os.environ["DATABASE_URL"])
-    stats = run_pipeline(conn, build_default_deps(conn), limit=args.limit)
+    stats = run_pipeline(conn, build_default_deps(conn), limit=args.limit, backfill=args.backfill)
     logger.info(
         "done: %s new posts seen, %s items added, %s deactivated",
         stats.posts_seen, stats.items_added, stats.items_deactivated,

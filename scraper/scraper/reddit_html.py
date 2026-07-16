@@ -6,15 +6,34 @@ Camoufox via StealthyFetcher gets through. Used as the default
 transport when no Reddit OAuth credentials are configured.
 """
 
+import re
 import time
+from urllib.parse import quote, urlparse
 
 from scrapling.parser import Selector
 
-from .config import DISCOVER_LIMIT, REQUEST_DELAY, SUBREDDIT
+from .config import (
+    BACKFILL_LISTINGS,
+    DAILY_LISTINGS,
+    DISCOVER_LIMIT,
+    DISCOVER_LIMIT_BACKFILL,
+    REQUEST_DELAY,
+    SEARCH_LIMIT,
+    SEARCH_QUERIES,
+    SUBREDDIT,
+)
 from .models import RedditPost
 
 BASE = "https://old.reddit.com"
 FETCH_TIMEOUT_MS = 60_000
+
+# old.reddit listing tokens differ from the OAuth API query format.
+_LISTING_PATHS = {
+    "top?t=week": "top/?t=week",
+    "top?t=month": "top/?t=month",
+    "hot": "hot/",
+}
+_COMMENTS_RE = re.compile(r"/comments/([a-z0-9]+)/", re.I)
 
 
 def _fetch(url: str) -> Selector:
@@ -59,6 +78,41 @@ def parse_listing_page(page: Selector) -> tuple[list[RedditPost], str | None]:
     return posts, (str(next_links[0]) if next_links else None)
 
 
+def parse_search_page(page: Selector) -> tuple[list[RedditPost], str | None]:
+    """Parse old.reddit search results (markup differs from listing pages).
+
+    Each result exposes the post via its comments link; score/comment counts
+    aren't reliably present, so they default to 0 and get filled when the
+    post's comments page is fetched downstream.
+    """
+    posts = []
+    for result in page.css("div.search-result-link"):
+        hrefs = result.css("a.search-comments::attr(href)")
+        if not hrefs:
+            hrefs = result.css("a.search-title::attr(href)")
+        if not hrefs:
+            continue
+        href = str(hrefs[0])
+        match = _COMMENTS_RE.search(href)
+        if not match:
+            continue
+        titles = result.css("a.search-title::text")
+        posts.append(
+            RedditPost(
+                reddit_post_id=match.group(1),
+                permalink=f"https://reddit.com{urlparse(href).path}",
+                title=str(titles[0]) if titles else "",
+                body="",
+                subreddit=SUBREDDIT,
+                score=0,
+                num_comments=0,
+                posted_at=0,
+            )
+        )
+    next_links = page.css("a[rel~='next']::attr(href)")
+    return posts, (str(next_links[0]) if next_links else None)
+
+
 def parse_post_page(page: Selector) -> list[str]:
     """Selftext (if any) followed by top-level comment texts, hrefs included."""
     texts = []
@@ -75,26 +129,37 @@ def parse_post_page(page: Selector) -> list[str]:
     return [t for t in texts if t]
 
 
-def discover_posts(limit: int = DISCOVER_LIMIT) -> list[RedditPost]:
+def _walk(start: str, parse, limit: int, posts: list, seen: set) -> None:
+    """Follow `next` pagination from `start`, deduping posts into the catalog."""
+    url: str | None = start
+    collected = 0
+    while url and collected < limit:
+        page_posts, url = parse(_fetch(url))
+        if not page_posts:
+            break
+        for post in page_posts:
+            collected += 1
+            if post.reddit_post_id not in seen:
+                seen.add(post.reddit_post_id)
+                posts.append(post)
+        time.sleep(REQUEST_DELAY)
+
+
+def discover_posts(backfill: bool = False) -> list[RedditPost]:
+    """Discover candidate posts from listings plus spreadsheet search queries.
+
+    `backfill` swaps the lean daily listings for the heavier month sweep; the
+    search queries run in both modes so new W2C sheets surface every pass.
+    """
+    listings = BACKFILL_LISTINGS if backfill else DAILY_LISTINGS
+    limit = DISCOVER_LIMIT_BACKFILL if backfill else DISCOVER_LIMIT
     posts: list[RedditPost] = []
     seen: set[str] = set()
-    for start in (
-        f"{BASE}/r/{SUBREDDIT}/top/?t=week",
-        f"{BASE}/r/{SUBREDDIT}/top/?t=month",
-        f"{BASE}/r/{SUBREDDIT}/hot/",
-    ):
-        url: str | None = start
-        collected = 0
-        while url and collected < limit:
-            page_posts, url = parse_listing_page(_fetch(url))
-            if not page_posts:
-                break
-            for post in page_posts:
-                collected += 1
-                if post.reddit_post_id not in seen:
-                    seen.add(post.reddit_post_id)
-                    posts.append(post)
-            time.sleep(REQUEST_DELAY)
+    for listing in listings:
+        _walk(f"{BASE}/r/{SUBREDDIT}/{_LISTING_PATHS[listing]}", parse_listing_page, limit, posts, seen)
+    for query in SEARCH_QUERIES:
+        start = f"{BASE}/r/{SUBREDDIT}/search?q={quote(query)}&restrict_sr=on&sort=new&include_over_18=on"
+        _walk(start, parse_search_page, SEARCH_LIMIT, posts, seen)
     return posts
 
 
