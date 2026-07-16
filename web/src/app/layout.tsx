@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Digital Canal Street",
+  title: "Digital Canal St",
   description: "Curated replica fashion catalog with one-click Superbuy links",
 };
 
@@ -32,7 +32,7 @@ export default function RootLayout({
         <footer className="border-t border-zinc-200 mt-8">
           <div className="mx-auto max-w-6xl px-4 py-6 text-xs text-zinc-500">
             <p>
-              As an affiliate, Digital Canal Street may earn a commission from
+              As an affiliate, Digital Canal St may earn a commission from
               qualifying purchases made through links on this site, at no
               additional cost to you.
             </p>

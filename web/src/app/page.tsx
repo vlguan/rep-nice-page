@@ -21,7 +21,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 space-y-6">
       <header>
-        <h1 className="text-2xl font-bold">Digital Canal Street</h1>
+        <h1 className="text-2xl font-bold">Digital Canal St</h1>
         <p className="text-sm text-zinc-500">
           trending rep fashion, begin chinamaxxing
         </p>
