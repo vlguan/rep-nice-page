@@ -1,5 +1,6 @@
 import re
 from enum import Enum
+from html import unescape
 
 import httpx
 
@@ -79,6 +80,35 @@ def detect_liveness(html: str, status_code: int) -> Liveness:
     return Liveness.UNKNOWN
 
 
+# Product photos on rendered pages are <img class="first-img"> elements;
+# every other si.geilicdn.com URL (shop avatar, badges, UI icons) is noise.
+_FIRST_IMG_PATTERNS = (
+    re.compile(r'<img[^>]+class="[^"]*\bfirst-img\b[^"]*"[^>]+src="([^"]+)"', re.I),
+    re.compile(r'<img[^>]+src="([^"]+)"[^>]+class="[^"]*\bfirst-img\b[^"]*"', re.I),
+)
+_GEILICDN_SWEEP = re.compile(r'https://si\.geilicdn\.com/[^\s"\'\\]+?\.(?:jpg|jpeg|png|webp)')
+
+
+def _product_images(html: str) -> list[str]:
+    images: list[str] = []
+    for pattern in _FIRST_IMG_PATTERNS:
+        for match in pattern.finditer(html):
+            # drop thumbnail params (?w=30&h=30) to get the full-size image
+            url = unescape(match.group(1)).split("?", 1)[0]
+            if url.startswith("http") and url not in images:
+                images.append(url)
+    if images:
+        return images
+    # fallback for pages without first-img markup: og:image + CDN sweep
+    og_image = _meta(html, "og:image")
+    if og_image:
+        images.append(og_image)
+    for match in _GEILICDN_SWEEP.finditer(html):
+        if match.group(0) not in images:
+            images.append(match.group(0))
+    return images
+
+
 def parse_listing_html(html: str, url: str) -> WeidianListing:
     title = _title_signal(html)
     if not title:
@@ -98,13 +128,7 @@ def parse_listing_html(html: str, url: str) -> WeidianListing:
             if yen_match:
                 price = float(yen_match.group(1))
 
-    images: list[str] = []
-    og_image = _meta(html, "og:image")
-    if og_image:
-        images.append(og_image)
-    for match in re.finditer(r'https://si\.geilicdn\.com/[^\s"\'\\]+?\.(?:jpg|jpeg|png|webp)', html):
-        if match.group(0) not in images:
-            images.append(match.group(0))
+    images = _product_images(html)
 
     seller = _meta(html, "shop_name")
     if not seller:

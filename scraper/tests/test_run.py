@@ -149,7 +149,7 @@ def test_aborted_run_records_error_and_reraises(conn):
     import pytest
 
     deps = make_deps([], JudgeResult(True, [], None, None, None, ""))
-    deps.discover = lambda: (_ for _ in ()).throw(RuntimeError("reddit down"))
+    deps.discover = lambda backfill=False: (_ for _ in ()).throw(RuntimeError("reddit down"))
     with pytest.raises(RuntimeError):
         run_pipeline(conn, deps)
     row = conn.execute("SELECT error FROM scrape_runs").fetchone()

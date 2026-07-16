@@ -122,3 +122,25 @@ def test_parse_price_from_rendered_yen_text():
         '<body><div class="price">¥ 180</div><div>¥ 180</div></body></html>'
     )
     assert parse_listing_html(html, URL).price_cny == 180.0
+
+
+def test_parse_listing_images_only_first_img_class():
+    html = (
+        "<html><head><title>帽衫</title></head><body>"
+        '<img class="avatar" src="https://si.geilicdn.com/shop-avatar123_60_60.jpg">'
+        '<img class="first-img" src="https://si.geilicdn.com/pcitem1-abc_1200_1200.jpg.webp?w=30&amp;h=30&amp;cp=1" alt="">'
+        '<img class="lazy first-img loaded" src="https://si.geilicdn.com/pcitem2-def_1200_1200.jpg.webp?w=30&amp;h=30" alt="">'
+        '<img class="icon" src="https://si.geilicdn.com/ui-icon_32_32.png">'
+        "</body></html>"
+    )
+    listing = parse_listing_html(html, URL)
+    assert listing.image_urls == [
+        "https://si.geilicdn.com/pcitem1-abc_1200_1200.jpg.webp",
+        "https://si.geilicdn.com/pcitem2-def_1200_1200.jpg.webp",
+    ]
+
+
+def test_parse_listing_images_fallback_sweep_when_no_first_img():
+    # pages without first-img keep the old og:image + geilicdn sweep
+    listing = parse_listing_html(LIVE_HTML, URL)
+    assert "https://si.geilicdn.com/item123-main.jpg" in listing.image_urls
