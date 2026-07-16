@@ -9,13 +9,13 @@ export function ItemCard({ item }: { item: ItemCardData }) {
   return (
     <Link
       href={`/item/${item.id}`}
-      className="group rounded-xl border border-zinc-200 bg-white overflow-hidden hover:shadow-md transition-shadow"
+      className="group block touch-manipulation rounded-xl border border-zinc-200 bg-white overflow-hidden hover:shadow-md transition-shadow"
     >
       <div className="aspect-square overflow-hidden bg-zinc-100">
         <ItemImage
           src={cover}
           alt={item.titleEn ?? "item"}
-          className="h-full w-full object-cover group-hover:scale-105 transition-transform"
+          className="h-full w-full object-cover transition-transform [@media(hover:hover)]:group-hover:scale-105"
         />
       </div>
       <div className="p-3 space-y-1">
