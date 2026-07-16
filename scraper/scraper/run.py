@@ -40,7 +40,7 @@ def _ingest_item(conn, deps: Deps, url: str, context: str, judge_result, post_ro
     listing = parse_listing_html(html, url)
     translation = deps.translate(listing, context)
     item_id = db.upsert_item(conn, listing, translation, judge_result)
-    db.link_mention(conn, item_id, post_row_id)
+    db.link_mention(conn, item_id, post_row_id, quote=context)
     return True
 
 
@@ -113,6 +113,12 @@ def run_pipeline(conn, deps: Deps, limit: int | None = None, backfill: bool = Fa
             stats.items_deactivated = deps.revalidate(conn)
         except Exception:
             logger.warning("revalidate failed", exc_info=True)
+        try:
+            changed = db.dedupe_shared_images(conn)
+            if changed:
+                logger.info("dedupe_shared_images: cleaned galleries on %s items", changed)
+        except Exception:
+            logger.warning("dedupe_shared_images failed", exc_info=True)
     except Exception as e:
         error = f"{type(e).__name__}: {e}"
         logger.error("pipeline aborted", exc_info=True)

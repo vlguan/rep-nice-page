@@ -85,14 +85,48 @@ def upsert_item(
     return row[0]
 
 
-def link_mention(conn: psycopg.Connection, item_id: int, post_row_id: int) -> None:
+def link_mention(
+    conn: psycopg.Connection, item_id: int, post_row_id: int, quote: str | None = None
+) -> None:
+    # quote is the Reddit comment/selftext text that mentioned this item's link,
+    # shown verbatim in the item page's Reviews section. COALESCE keeps an
+    # existing quote if a later re-link arrives without one.
     conn.execute(
         """
-        INSERT INTO item_mentions (item_id, reddit_post_id)
-        VALUES (%s, %s) ON CONFLICT DO NOTHING
+        INSERT INTO item_mentions (item_id, reddit_post_id, quote)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (item_id, reddit_post_id)
+        DO UPDATE SET quote = COALESCE(EXCLUDED.quote, item_mentions.quote)
         """,
-        (item_id, post_row_id),
+        (item_id, post_row_id, quote),
     )
+
+
+def dedupe_shared_images(conn: psycopg.Connection, min_shared: int = 2) -> int:
+    """Strip Weidian UI chrome (logos, avatars, banners, size charts) from item
+    galleries. These render on many product pages, so they appear across many
+    items, whereas real product photos are unique. URL patterns don't separate
+    them reliably, but cross-item frequency does: drop any image shared by
+    `min_shared`+ items. Returns the number of items whose gallery changed.
+    """
+    cur = conn.execute(
+        """
+        WITH shared AS (
+            SELECT url FROM items, jsonb_array_elements_text(image_urls) url
+            WHERE platform = 'weidian'
+            GROUP BY url HAVING count(*) >= %s
+        )
+        UPDATE items i SET image_urls = COALESCE(
+            (SELECT jsonb_agg(e) FROM jsonb_array_elements_text(i.image_urls) e
+             WHERE e NOT IN (SELECT url FROM shared)),
+            '[]'::jsonb)
+        WHERE i.platform = 'weidian'
+          AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(i.image_urls) e
+                      WHERE e IN (SELECT url FROM shared))
+        """,
+        (min_shared,),
+    )
+    return cur.rowcount
 
 
 def get_items_for_validation(conn: psycopg.Connection) -> list[tuple[int, str, str]]:

@@ -44,6 +44,50 @@ def test_upsert_item_and_mention(conn):
     assert row == (item_id, LISTING.weidian_url, "active")
 
 
+def test_link_mention_stores_quote_and_keeps_it_on_relink(conn):
+    from scraper import db
+
+    post_id = db.insert_post(conn, POST, "positive", None)
+    item_id = db.upsert_item(conn, LISTING, TRANSLATION, JUDGE)
+    db.link_mention(conn, item_id, post_id, quote="fits TTS, 8/10")
+    db.link_mention(conn, item_id, post_id)  # re-link without quote must not wipe it
+
+    quote = conn.execute(
+        "SELECT quote FROM item_mentions WHERE item_id = %s AND reddit_post_id = %s",
+        (item_id, post_id),
+    ).fetchone()[0]
+    assert quote == "fits TTS, 8/10"
+
+
+def test_dedupe_shared_images_strips_chrome_keeps_unique(conn):
+    import json as _json
+
+    from scraper import db
+
+    def mk(url_id, imgs):
+        listing = WeidianListing(
+            weidian_url=f"https://weidian.com/item.html?itemID={url_id}",
+            weidian_item_id=str(url_id), title_zh="x", description_zh="",
+            price_cny=1.0, seller_name=None, image_urls=imgs,
+        )
+        return db.upsert_item(conn, listing, TRANSLATION, JUDGE)
+
+    chrome = "https://si.geilicdn.com/hz_img_logo.png"  # appears on every item
+    a = mk(1, ["https://si.geilicdn.com/prodA.jpg", chrome])
+    b = mk(2, ["https://si.geilicdn.com/prodB.jpg", chrome])
+    c = mk(3, [chrome])  # only chrome -> becomes empty
+
+    changed = db.dedupe_shared_images(conn)
+    assert changed == 3
+    galleries = {
+        r[0]: r[1]
+        for r in conn.execute("SELECT id, image_urls FROM items WHERE id = ANY(%s)", ([a, b, c],)).fetchall()
+    }
+    assert galleries[a] == ["https://si.geilicdn.com/prodA.jpg"]
+    assert galleries[b] == ["https://si.geilicdn.com/prodB.jpg"]
+    assert galleries[c] == []
+
+
 def test_get_items_for_validation_skips_taobao_and_fresh(conn):
     from scraper import db
 
