@@ -9,25 +9,28 @@ const URL_RE =
 // lines that are just a label ("W2C:", "link", "cop") carry no review content
 const CONNECTOR_RE = /^(?:w2c|link|links|rep|reps|cop|here|source|src|item|qc)[\s:.\-–—]*$/i;
 
+// haul enumeration labels ("7. Stüssy Thermal (Size M)") head a comment but
+// aren't review prose — the item title already shows above the reviews.
+const LABEL_RE = /^\d+[.)]\s/;
+
 /**
- * Turn a stored Reddit quote into display-ready review bullets: split into
- * lines, strip purchase URLs and leading list markers, and drop empty or
- * label-only lines. Returns [] when nothing quotable remains.
+ * Turn a stored Reddit quote into ONE continuous review string: strip purchase
+ * URLs, leading list markers, label-only and enumeration lines, then join the
+ * remaining lines into a single quote. Returns null when nothing quotable
+ * remains. A single comment stays a single review — it is never split.
  */
-export function reviewBullets(quote: string | null | undefined): string[] {
-  if (!quote) return [];
-  const seen = new Set<string>();
-  const bullets: string[] = [];
+export function reviewQuote(quote: string | null | undefined): string | null {
+  if (!quote) return null;
+  const parts: string[] = [];
   for (const raw of quote.split(/\r?\n/)) {
     const line = raw
       .replace(URL_RE, "")
       .replace(/^[\s•\-–—*·|>:]+/, "")
       .replace(/\s+/g, " ")
       .trim();
-    const key = line.toLowerCase();
-    if (line.length < 4 || CONNECTOR_RE.test(line) || seen.has(key)) continue;
-    seen.add(key);
-    bullets.push(line);
+    if (!line || CONNECTOR_RE.test(line) || LABEL_RE.test(line)) continue;
+    parts.push(line);
   }
-  return bullets;
+  const text = parts.join(" ").trim();
+  return text.length >= 4 ? text : null;
 }

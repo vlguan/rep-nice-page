@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { GuideButton } from "@/components/GuideButton";
 import { ItemGallery } from "@/components/ItemGallery";
 import { getItemDetail } from "@/db/queries";
-import { cnyToUsd, reviewBullets } from "@/lib/format";
+import { cnyToUsd, reviewQuote } from "@/lib/format";
 import { superbuyUrl } from "@/lib/superbuy";
 
 export const dynamic = "force-dynamic";
@@ -18,15 +18,15 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
   const price = item.priceCny ? Number(item.priceCny) : null;
   const summary = item.mentions.find((m) => m.aiSummary)?.aiSummary;
 
-  // Verbatim Reddit quotes → deduped review bullets, best-scored source first.
+  // One continuous verbatim review per Reddit comment, deduped, best score first.
   const reviewMap = new Map<string, { text: string; score: number; permalink: string | null }>();
   for (const m of item.mentions) {
-    for (const text of reviewBullets(m.quote)) {
-      const key = text.toLowerCase();
-      const prev = reviewMap.get(key);
-      if (!prev || (m.score ?? 0) > prev.score) {
-        reviewMap.set(key, { text, score: m.score ?? 0, permalink: m.permalink });
-      }
+    const text = reviewQuote(m.quote);
+    if (!text) continue;
+    const key = text.toLowerCase();
+    const prev = reviewMap.get(key);
+    if (!prev || (m.score ?? 0) > prev.score) {
+      reviewMap.set(key, { text, score: m.score ?? 0, permalink: m.permalink });
     }
   }
   const reviews = [...reviewMap.values()].sort((a, b) => b.score - a.score);
@@ -76,37 +76,25 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
 
           {item.descriptionEn && <p className="text-sm text-zinc-700 whitespace-pre-line">{item.descriptionEn}</p>}
 
-          {summary && (
-            <details className="rounded-xl bg-amber-50 border border-amber-200">
-              <summary className="cursor-pointer select-none p-3 text-xs font-semibold uppercase text-amber-700">
-                Community verdict (AI summary)
-              </summary>
-              <p className="px-3 pb-3 text-sm text-amber-900">{summary}</p>
-            </details>
-          )}
-
           {reviews.length > 0 && (
             <div>
               <h2 className="text-xs font-semibold uppercase text-zinc-500 mb-2">Reviews (from Reddit)</h2>
-              <ul className="space-y-2">
+              <ul className="space-y-3">
                 {reviews.map((r) => (
-                  <li key={r.text} className="text-sm text-zinc-700 flex gap-2">
-                    <span className="text-zinc-300 select-none">•</span>
-                    <span>
-                      {r.text}{" "}
-                      {r.permalink ? (
-                        <a
-                          href={r.permalink}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-zinc-400 hover:text-blue-600 hover:underline whitespace-nowrap"
-                        >
-                          — {r.score} pts
-                        </a>
-                      ) : (
-                        <span className="text-zinc-400 whitespace-nowrap">— {r.score} pts</span>
-                      )}
-                    </span>
+                  <li key={r.text} className="text-sm text-zinc-800">
+                    <span className="italic">&ldquo;{r.text}&rdquo;</span>{" "}
+                    {r.permalink ? (
+                      <a
+                        href={r.permalink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-zinc-400 hover:text-blue-600 hover:underline whitespace-nowrap"
+                      >
+                        — {r.score} pts
+                      </a>
+                    ) : (
+                      <span className="text-zinc-400 whitespace-nowrap">— {r.score} pts</span>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -127,6 +115,13 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
               ))}
             </ul>
           </div>
+
+          {summary && (
+            <details className="text-xs text-zinc-400">
+              <summary className="cursor-pointer select-none hover:text-zinc-600">AI summary of the discussion</summary>
+              <p className="mt-1 text-zinc-500">{summary}</p>
+            </details>
+          )}
         </div>
       </div>
     </main>
