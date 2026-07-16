@@ -8,7 +8,7 @@ export function ItemGallery({ images, alt }: { images: string[]; alt: string }) 
   const cover = images[active] ?? null;
 
   return (
-    <div className="space-y-2">
+    <div className="min-w-0 space-y-2">
       <div className="aspect-square rounded-xl overflow-hidden bg-zinc-100">
         <ItemImage src={cover} alt={alt} className="h-full w-full object-cover" />
       </div>

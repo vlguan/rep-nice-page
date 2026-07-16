@@ -38,7 +38,7 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
       <div className="grid md:grid-cols-2 gap-6 md:items-start">
         <ItemGallery images={item.imageUrls ?? []} alt={item.titleEn ?? "item"} />
 
-        <div className="space-y-4 md:sticky md:top-8">
+        <div className="min-w-0 space-y-4 md:sticky md:top-8">
           {item.brand && <span className="inline-block text-xs font-medium bg-zinc-100 rounded-full px-2 py-0.5">{item.brand}</span>}
           <h1 className="text-xl font-bold">{item.titleEn ?? "Untitled"}</h1>
           {item.descriptionEn && <p className="text-sm text-zinc-700 whitespace-pre-line">{item.descriptionEn}</p>}
