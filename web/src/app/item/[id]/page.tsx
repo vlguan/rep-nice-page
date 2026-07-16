@@ -32,13 +32,13 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
   const reviews = [...reviewMap.values()].sort((a, b) => b.score - a.score);
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-8 space-y-6">
+    <main className="mx-auto max-w-4xl px-4 py-8 space-y-8">
       <Link href="/" className="text-sm text-zinc-500 hover:underline">← back to all items</Link>
 
-      <div className="grid md:grid-cols-2 gap-6">
+      <div className="grid md:grid-cols-2 gap-6 md:items-start">
         <ItemGallery images={item.imageUrls ?? []} alt={item.titleEn ?? "item"} />
 
-        <div className="space-y-4">
+        <div className="space-y-4 md:sticky md:top-8">
           {item.brand && <span className="inline-block text-xs font-medium bg-zinc-100 rounded-full px-2 py-0.5">{item.brand}</span>}
           <h1 className="text-xl font-bold">{item.titleEn ?? "Untitled"}</h1>
           {item.descriptionEn && <p className="text-sm text-zinc-700 whitespace-pre-line">{item.descriptionEn}</p>}
@@ -65,64 +65,41 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
           >
             Buy via Superbuy →
           </a>
-          <a
-            href={item.productUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block w-full rounded-xl border border-zinc-300 text-center py-2 text-sm hover:bg-zinc-50"
-          >
-            View original on {item.platform === "taobao" ? "Taobao" : "Weidian"}
-          </a>
           <GuideButton label="New to agents? How buying works" />
-
-          {reviews.length > 0 && (
-            <div>
-              <h2 className="text-xs font-semibold uppercase text-zinc-500 mb-2">Reviews (from Reddit)</h2>
-              <ul className="space-y-3">
-                {reviews.map((r) => (
-                  <li key={r.text} className="text-sm text-zinc-800">
-                    <span className="italic">&ldquo;{r.text}&rdquo;</span>{" "}
-                    {r.permalink ? (
-                      <a
-                        href={r.permalink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-zinc-400 hover:text-blue-600 hover:underline whitespace-nowrap"
-                      >
-                        — {r.score} pts
-                      </a>
-                    ) : (
-                      <span className="text-zinc-400 whitespace-nowrap">— {r.score} pts</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          <div>
-            <h2 className="text-xs font-semibold uppercase text-zinc-500 mb-2">
-              Seen in {item.mentions.length} Reddit post{item.mentions.length === 1 ? "" : "s"}
-            </h2>
-            <ul className="space-y-1">
-              {item.mentions.map((m) => (
-                <li key={m.permalink}>
-                  <a href={m.permalink ?? "#"} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline">
-                    {m.title ?? m.permalink} <span className="text-zinc-400">({m.score ?? 0} pts)</span>
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {summary && (
-            <details className="text-xs text-zinc-400">
-              <summary className="cursor-pointer select-none hover:text-zinc-600">AI summary of the discussion</summary>
-              <p className="mt-1 text-zinc-500">{summary}</p>
-            </details>
-          )}
         </div>
       </div>
+
+      {reviews.length > 0 && (
+        <section>
+          <h2 className="text-xs font-semibold uppercase text-zinc-500 mb-3">Reviews (from Reddit)</h2>
+          <ul className="space-y-3 max-w-2xl">
+            {reviews.map((r) => (
+              <li key={r.text} className="text-sm text-zinc-800">
+                <span className="italic">&ldquo;{r.text}&rdquo;</span>{" "}
+                {r.permalink ? (
+                  <a
+                    href={r.permalink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-zinc-400 hover:text-blue-600 hover:underline whitespace-nowrap"
+                  >
+                    — {r.score} pts
+                  </a>
+                ) : (
+                  <span className="text-zinc-400 whitespace-nowrap">— {r.score} pts</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {summary && (
+        <details className="text-xs text-zinc-400">
+          <summary className="cursor-pointer select-none hover:text-zinc-600">AI summary of the discussion</summary>
+          <p className="mt-1 text-zinc-500 max-w-2xl">{summary}</p>
+        </details>
+      )}
     </main>
   );
 }
