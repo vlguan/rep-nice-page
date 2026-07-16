@@ -1,4 +1,6 @@
-import Link from "next/link";
+"use client";
+
+import { useRouter } from "next/navigation";
 
 type Props = {
   brands: string[];
@@ -14,23 +16,16 @@ function buildHref(current: Props["current"], patch: Record<string, string | und
   return qs ? `/?${qs}` : "/";
 }
 
-function Chip({ href, active, children }: { href: string; active: boolean; children: React.ReactNode }) {
-  return (
-    <Link
-      href={href}
-      className={`rounded-full px-3 py-1 text-sm border ${
-        active ? "bg-zinc-900 text-white border-zinc-900" : "border-zinc-300 hover:bg-zinc-100"
-      }`}
-    >
-      {children}
-    </Link>
-  );
-}
+const selectClass =
+  "rounded border border-zinc-300 bg-white px-2 py-1.5 text-sm text-zinc-700 hover:border-zinc-400";
 
 export function FilterBar({ brands, categories, current }: Props) {
+  const router = useRouter();
+  const nav = (patch: Record<string, string | undefined>) => router.push(buildHref(current, patch));
+
   return (
-    <div className="space-y-2">
-      <form action="" method="get" className="flex gap-2">
+    <div className="flex flex-wrap items-center gap-2">
+      <form action="" method="get" className="flex flex-1 min-w-56 gap-2">
         {current.category && <input type="hidden" name="category" value={current.category} />}
         {current.brand && <input type="hidden" name="brand" value={current.brand} />}
         {current.sort && <input type="hidden" name="sort" value={current.sort} />}
@@ -39,38 +34,48 @@ export function FilterBar({ brands, categories, current }: Props) {
           name="q"
           defaultValue={current.q ?? ""}
           placeholder="Search items… (e.g. hellstar hoodie)"
-          className="rounded border border-zinc-300 px-3 py-1.5 text-sm w-56"
+          className="flex-1 rounded border border-zinc-300 px-3 py-1.5 text-sm"
         />
         <button type="submit" className="rounded bg-zinc-900 text-white px-3 py-1.5 text-sm">
           Search
         </button>
       </form>
-      <div className="flex flex-wrap gap-2 items-center">
-        <span className="text-xs uppercase text-zinc-500 w-16">Sort</span>
-        {(["trending", "newest", "price"] as const).map((s) => (
-          <Chip key={s} href={buildHref(current, { sort: s })} active={(current.sort ?? "trending") === s}>
-            {s}
-          </Chip>
-        ))}
-      </div>
-      <div className="flex flex-wrap gap-2 items-center">
-        <span className="text-xs uppercase text-zinc-500 w-16">Category</span>
-        <Chip href={buildHref(current, { category: undefined })} active={!current.category}>all</Chip>
+      <select
+        aria-label="Category"
+        className={selectClass}
+        value={current.category ?? ""}
+        onChange={(e) => nav({ category: e.target.value || undefined })}
+      >
+        <option value="">All categories</option>
         {categories.map((c) => (
-          <Chip key={c} href={buildHref(current, { category: c })} active={current.category === c}>
+          <option key={c} value={c}>
             {c}
-          </Chip>
+          </option>
         ))}
-      </div>
-      <div className="flex flex-wrap gap-2 items-center">
-        <span className="text-xs uppercase text-zinc-500 w-16">Brand</span>
-        <Chip href={buildHref(current, { brand: undefined })} active={!current.brand}>all</Chip>
+      </select>
+      <select
+        aria-label="Brand"
+        className={selectClass}
+        value={current.brand ?? ""}
+        onChange={(e) => nav({ brand: e.target.value || undefined })}
+      >
+        <option value="">All brands</option>
         {brands.map((b) => (
-          <Chip key={b} href={buildHref(current, { brand: b })} active={current.brand === b}>
+          <option key={b} value={b}>
             {b}
-          </Chip>
+          </option>
         ))}
-      </div>
+      </select>
+      <select
+        aria-label="Sort"
+        className={selectClass}
+        value={current.sort ?? "trending"}
+        onChange={(e) => nav({ sort: e.target.value })}
+      >
+        <option value="trending">Trending</option>
+        <option value="newest">Newest</option>
+        <option value="price">Price</option>
+      </select>
     </div>
   );
 }
