@@ -102,9 +102,17 @@ def run_pipeline(conn, deps: Deps, limit: int | None = None, backfill: bool = Fa
             except Exception:
                 logger.warning("failed to process post %s", post.reddit_post_id, exc_info=True)
 
-        deps.sync_sheets()
-        deps.promote()
-        stats.items_deactivated = deps.revalidate(conn)
+        # Post-loop stages each touch the network/browser; a failure here
+        # shouldn't discard the posts and items already committed above.
+        for stage in ("sync_sheets", "promote"):
+            try:
+                getattr(deps, stage)()
+            except Exception:
+                logger.warning("post-loop stage %s failed", stage, exc_info=True)
+        try:
+            stats.items_deactivated = deps.revalidate(conn)
+        except Exception:
+            logger.warning("revalidate failed", exc_info=True)
     except Exception as e:
         error = f"{type(e).__name__}: {e}"
         logger.error("pipeline aborted", exc_info=True)

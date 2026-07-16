@@ -6,6 +6,7 @@ Camoufox via StealthyFetcher gets through. Used as the default
 transport when no Reddit OAuth credentials are configured.
 """
 
+import logging
 import re
 import time
 from urllib.parse import quote, urlparse
@@ -24,6 +25,8 @@ from .config import (
 )
 from .models import RedditPost
 
+logger = logging.getLogger(__name__)
+
 BASE = "https://old.reddit.com"
 FETCH_TIMEOUT_MS = 60_000
 
@@ -36,15 +39,31 @@ _LISTING_PATHS = {
 _COMMENTS_RE = re.compile(r"/comments/([a-z0-9]+)/", re.I)
 
 
+FETCH_RETRIES = 3
+
+
 def _fetch(url: str) -> Selector:
+    """Fetch a page via camoufox, retrying transient browser-launch hangs.
+
+    A single wedged headless-browser launch would otherwise abort a whole
+    backfill, so failed attempts are retried with a fresh browser.
+    """
     from scrapling.fetchers import StealthyFetcher
 
-    page = StealthyFetcher.fetch(
-        url, headless=True, network_idle=True, timeout=FETCH_TIMEOUT_MS
-    )
-    if page.status != 200:
-        raise RuntimeError(f"fetch failed ({page.status}): {url}")
-    return page
+    last_err: Exception | None = None
+    for attempt in range(FETCH_RETRIES):
+        try:
+            page = StealthyFetcher.fetch(
+                url, headless=True, network_idle=True, timeout=FETCH_TIMEOUT_MS
+            )
+            if page.status == 200:
+                return page
+            last_err = RuntimeError(f"fetch failed ({page.status}): {url}")
+        except Exception as e:  # browser launch/timeout/navigation errors
+            last_err = e
+            logger.warning("fetch attempt %d/%d failed for %s: %s", attempt + 1, FETCH_RETRIES, url, e)
+        time.sleep(REQUEST_DELAY * (attempt + 1))
+    raise last_err
 
 
 def _text_with_links(node) -> str:
@@ -130,11 +149,19 @@ def parse_post_page(page: Selector) -> list[str]:
 
 
 def _walk(start: str, parse, limit: int, posts: list, seen: set) -> None:
-    """Follow `next` pagination from `start`, deduping posts into the catalog."""
+    """Follow `next` pagination from `start`, deduping posts into the catalog.
+
+    A page that fails to fetch (after retries) ends this source's walk rather
+    than aborting discovery, so one bad page can't sink a whole backfill.
+    """
     url: str | None = start
     collected = 0
     while url and collected < limit:
-        page_posts, url = parse(_fetch(url))
+        try:
+            page_posts, url = parse(_fetch(url))
+        except Exception:
+            logger.warning("discovery page failed, stopping this source: %s", url, exc_info=True)
+            break
         if not page_posts:
             break
         for post in page_posts:
