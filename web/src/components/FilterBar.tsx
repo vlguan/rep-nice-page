@@ -24,23 +24,26 @@ export function FilterBar({ brands, categories, current }: Props) {
   const nav = (patch: Record<string, string | undefined>) => router.push(buildHref(current, patch));
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <form action="" method="get" className="flex flex-1 min-w-56 gap-2">
-        {current.category && <input type="hidden" name="category" value={current.category} />}
-        {current.brand && <input type="hidden" name="brand" value={current.brand} />}
-        {current.sort && <input type="hidden" name="sort" value={current.sort} />}
-        <input
-          type="search"
-          name="q"
-          defaultValue={current.q ?? ""}
-          placeholder="Search items… (e.g. hellstar hoodie)"
-          className="flex-1 rounded border border-zinc-300 px-3 py-1.5 text-sm"
-        />
-        <button type="submit" className="rounded bg-zinc-900 text-white px-3 py-1.5 text-sm">
-          Search
-        </button>
-      </form>
-      <select
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex rounded-lg border border-zinc-300 overflow-hidden">
+          {(["trending", "newest", "price"] as const).map((s) => {
+            const active = (current.sort ?? "trending") === s;
+            return (
+              <button
+                key={s}
+                type="button"
+                onClick={() => nav({ sort: s })}
+                className={`px-3 py-1.5 text-sm capitalize ${
+                  active ? "bg-zinc-900 text-white" : "bg-white text-zinc-700 hover:bg-zinc-100"
+                }`}
+              >
+                {s}
+              </button>
+            );
+          })}
+        </div>
+        <select
         aria-label="Category"
         className={selectClass}
         value={current.category ?? ""}
@@ -66,16 +69,25 @@ export function FilterBar({ brands, categories, current }: Props) {
           </option>
         ))}
       </select>
-      <select
-        aria-label="Sort"
-        className={selectClass}
-        value={current.sort ?? "trending"}
-        onChange={(e) => nav({ sort: e.target.value })}
-      >
-        <option value="trending">Trending</option>
-        <option value="newest">Newest</option>
-        <option value="price">Price</option>
-      </select>
+      </div>
+      <form action="" method="get" className="flex items-center gap-1.5">
+        {current.category && <input type="hidden" name="category" value={current.category} />}
+        {current.brand && <input type="hidden" name="brand" value={current.brand} />}
+        {current.sort && <input type="hidden" name="sort" value={current.sort} />}
+        <input
+          type="search"
+          name="q"
+          defaultValue={current.q ?? ""}
+          placeholder="Search items…"
+          className="w-44 sm:w-56 rounded border border-zinc-300 px-3 py-1.5 text-sm"
+        />
+        <button
+          type="submit"
+          className="rounded bg-zinc-900 text-white px-2.5 py-1.5 text-xs hover:bg-zinc-700"
+        >
+          Go
+        </button>
+      </form>
     </div>
   );
 }

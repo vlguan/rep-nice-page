@@ -27,9 +27,9 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
             <ItemImage src={item.imageUrls?.[0] ?? null} alt={item.titleEn ?? "item"} className="h-full w-full object-cover" />
           </div>
           {(item.imageUrls?.length ?? 0) > 1 && (
-            <div className="grid grid-cols-4 gap-2">
-              {item.imageUrls!.slice(1, 9).map((url) => (
-                <div key={url} className="aspect-square rounded-lg overflow-hidden bg-zinc-100">
+            <div className="flex gap-2 overflow-x-auto pb-1 snap-x">
+              {item.imageUrls!.map((url) => (
+                <div key={url} className="w-24 h-24 shrink-0 snap-start rounded-lg overflow-hidden bg-zinc-100">
                   <ItemImage src={url} alt="" className="h-full w-full object-cover" />
                 </div>
               ))}
@@ -67,10 +67,12 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
           {item.descriptionEn && <p className="text-sm text-zinc-700 whitespace-pre-line">{item.descriptionEn}</p>}
 
           {summary && (
-            <div className="rounded-xl bg-amber-50 border border-amber-200 p-3">
-              <h2 className="text-xs font-semibold uppercase text-amber-700 mb-1">Community verdict (AI summary)</h2>
-              <p className="text-sm text-amber-900">{summary}</p>
-            </div>
+            <details className="rounded-xl bg-amber-50 border border-amber-200">
+              <summary className="cursor-pointer select-none p-3 text-xs font-semibold uppercase text-amber-700">
+                Community verdict (AI summary)
+              </summary>
+              <p className="px-3 pb-3 text-sm text-amber-900">{summary}</p>
+            </details>
           )}
 
           <div>
