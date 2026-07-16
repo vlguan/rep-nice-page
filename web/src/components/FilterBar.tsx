@@ -17,7 +17,7 @@ function buildHref(current: Props["current"], patch: Record<string, string | und
 }
 
 const selectClass =
-  "rounded border border-zinc-300 bg-white px-2 py-1.5 text-sm text-zinc-700 hover:border-zinc-400";
+  "w-36 truncate rounded border border-zinc-300 bg-white px-2 py-1.5 text-sm text-zinc-700 hover:border-zinc-400";
 
 export function FilterBar({ brands, categories, current }: Props) {
   const router = useRouter();

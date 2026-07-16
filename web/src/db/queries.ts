@@ -109,7 +109,14 @@ export async function getFilterOptions(): Promise<{ brands: string[]; categories
   const brands = await db
     .selectDistinct({ v: items.brand })
     .from(items)
-    .where(and(eq(items.status, "active"), isNotNull(items.brand)));
+    .where(
+      and(
+        eq(items.status, "active"),
+        isNotNull(items.brand),
+        // multi-item haul labels ("Multiple (AMIRI, ...)") are not brands
+        sql`${items.brand} NOT ILIKE 'multiple%'`,
+      ),
+    );
   const categories = await db
     .selectDistinct({ v: items.category })
     .from(items)

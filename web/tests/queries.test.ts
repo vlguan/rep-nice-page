@@ -104,4 +104,19 @@ describe.skipIf(!hasDb)("queries", () => {
       .where(sql`requested_at IS NOT NULL`);
     expect(flagged.map((f) => f.name)).toContain("Hellstar hoodie");
   });
+
+  it("getFilterOptions excludes junk Multiple(...) pseudo-brands", async () => {
+    await db.insert(schema.items).values({
+      productUrl: "https://weidian.com/item.html?itemID=777",
+      titleEn: "haul item",
+      brand: "Multiple (AMIRI, Hellstar, Chrome Hearts)",
+      category: "clothing",
+      status: "active",
+      imageUrls: [],
+    });
+    const opts = await queries.getFilterOptions();
+    expect(opts.brands).not.toContainEqual(expect.stringMatching(/^Multiple/));
+    expect(opts.brands).toContain("CH");
+  });
+
 });
