@@ -42,6 +42,7 @@ export const itemMentions = pgTable(
   {
     itemId: integer("item_id").notNull().references(() => items.id),
     redditPostId: integer("reddit_post_id").notNull().references(() => redditPosts.id),
+    quote: text("quote"), // verbatim Reddit text that mentioned this item
   },
   (t) => [primaryKey({ columns: [t.itemId, t.redditPostId] })],
 );

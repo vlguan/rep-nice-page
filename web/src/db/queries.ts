@@ -26,6 +26,7 @@ export type ItemDetail = ItemCardData & {
     title: string | null;
     score: number | null;
     aiSummary: string | null;
+    quote: string | null;
   }[];
 };
 
@@ -98,6 +99,7 @@ export async function getItemDetail(id: number): Promise<ItemDetail | null> {
       title: redditPosts.title,
       score: redditPosts.score,
       aiSummary: redditPosts.aiSummary,
+      quote: itemMentions.quote,
     })
     .from(itemMentions)
     .innerJoin(redditPosts, eq(redditPosts.id, itemMentions.redditPostId))
