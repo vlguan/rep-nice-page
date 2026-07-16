@@ -79,6 +79,11 @@ export function FilterBar({ brands, categories, current }: Props) {
           name="q"
           defaultValue={current.q ?? ""}
           placeholder="Search items…"
+          onChange={(e) => {
+            // Emptying the box (delete or the native × clear) resets to the
+            // full list, keeping any category/brand/sort filters.
+            if (e.target.value.trim() === "" && current.q) nav({ q: undefined });
+          }}
           className="w-44 sm:w-56 rounded border border-zinc-300 px-3 py-1.5 text-sm"
         />
         <button
