@@ -28,18 +28,23 @@ export function FilterBar({ brands, categories, styles, current }: Props) {
     <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex w-full sm:w-auto rounded-lg border border-zinc-300 overflow-hidden">
-          {(["trending", "newest", "price"] as const).map((s) => {
-            const active = (current.sort ?? "trending") === s;
+          {([
+            { key: "trending", label: "Trending" },
+            { key: "newest", label: "Newest" },
+            { key: "price", label: "Price" },
+            { key: "value", label: "Best value" },
+          ] as const).map((s) => {
+            const active = (current.sort ?? "trending") === s.key;
             return (
               <button
-                key={s}
+                key={s.key}
                 type="button"
-                onClick={() => nav({ sort: s })}
-                className={`flex-1 sm:flex-none px-3 py-1.5 text-sm capitalize ${
+                onClick={() => nav({ sort: s.key })}
+                className={`flex-1 sm:flex-none whitespace-nowrap px-3 py-1.5 text-sm ${
                   active ? "bg-zinc-900 text-white" : "bg-white text-zinc-700 hover:bg-zinc-100"
                 }`}
               >
-                {s}
+                {s.label}
               </button>
             );
           })}

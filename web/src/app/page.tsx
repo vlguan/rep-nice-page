@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
-import Link from "next/link";
 import { Suspense } from "react";
 import { Banner } from "@/components/Banner";
 import { CatalogTracker } from "@/components/CatalogTracker";
 import { FilterBar } from "@/components/FilterBar";
 import { GuideButton } from "@/components/GuideButton";
 import { ItemCard } from "@/components/ItemCard";
+import { NavLinks } from "@/components/NavLinks";
 import { Pagination } from "@/components/Pagination";
 import { RecommendationRow } from "@/components/RecommendationRow";
 import { StagingCard } from "@/components/StagingCard";
@@ -31,7 +31,7 @@ type SearchParams = Promise<{ category?: string; brand?: string; style?: string;
 
 export default async function Home({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
-  const sort = (["trending", "newest", "price"].includes(params.sort ?? "") ? params.sort : "trending") as SortKey;
+  const sort = (["trending", "newest", "price", "value"].includes(params.sort ?? "") ? params.sort : "trending") as SortKey;
   const q = params.q?.trim();
   const page = Math.max(1, Number(params.page) || 1);
   const [result, filterOptions, stagingRows] = await Promise.all([
@@ -61,13 +61,8 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         <p className="text-sm text-zinc-500">
           {TAGLINE_PREFIX} · {randomQuote()}
         </p>
-        <div className="flex shrink-0 items-center gap-2">
-          <Link
-            href="/stores"
-            className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100"
-          >
-            Vetted stores
-          </Link>
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          <NavLinks />
           <GuideButton />
         </div>
       </header>

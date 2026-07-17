@@ -2,12 +2,12 @@ import Link from "next/link";
 
 type Current = { category?: string; brand?: string; style?: string; sort?: string; q?: string; shop?: string };
 
-function hrefFor(current: Current, page: number) {
+function hrefFor(current: Current, page: number, basePath: string) {
   const params = new URLSearchParams();
   for (const [k, v] of Object.entries(current)) if (v) params.set(k, v);
   if (page > 1) params.set("page", String(page));
   const qs = params.toString();
-  return qs ? `/?${qs}` : "/";
+  return qs ? `${basePath}?${qs}` : basePath;
 }
 
 const base = "min-w-9 rounded-lg border px-3 py-1.5 text-sm text-center";
@@ -20,11 +20,13 @@ export function Pagination({
   total,
   pageSize,
   current,
+  basePath = "/",
 }: {
   page: number;
   total: number;
   pageSize: number;
   current: Current;
+  basePath?: string;
 }) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   if (totalPages <= 1) return null;
@@ -38,7 +40,7 @@ export function Pagination({
   return (
     <nav className="flex flex-wrap items-center justify-center gap-1.5 pt-2" aria-label="Pagination">
       <Link
-        href={hrefFor(current, cur - 1)}
+        href={hrefFor(current, cur - 1, basePath)}
         aria-disabled={cur === 1}
         className={`${base} ${cur === 1 ? disabled : link}`}
       >
@@ -46,14 +48,14 @@ export function Pagination({
       </Link>
       {start > 1 && (
         <>
-          <Link href={hrefFor(current, 1)} className={`${base} ${link}`}>1</Link>
+          <Link href={hrefFor(current, 1, basePath)} className={`${base} ${link}`}>1</Link>
           {start > 2 && <span className="px-1 text-zinc-400">…</span>}
         </>
       )}
       {nums.map((n) => (
         <Link
           key={n}
-          href={hrefFor(current, n)}
+          href={hrefFor(current, n, basePath)}
           aria-current={n === cur ? "page" : undefined}
           className={`${base} ${n === cur ? activeCls : link}`}
         >
@@ -63,11 +65,11 @@ export function Pagination({
       {end < totalPages && (
         <>
           {end < totalPages - 1 && <span className="px-1 text-zinc-400">…</span>}
-          <Link href={hrefFor(current, totalPages)} className={`${base} ${link}`}>{totalPages}</Link>
+          <Link href={hrefFor(current, totalPages, basePath)} className={`${base} ${link}`}>{totalPages}</Link>
         </>
       )}
       <Link
-        href={hrefFor(current, cur + 1)}
+        href={hrefFor(current, cur + 1, basePath)}
         aria-disabled={cur === totalPages}
         className={`${base} ${cur === totalPages ? disabled : link}`}
       >

@@ -2,7 +2,16 @@ import { and, asc, desc, eq, inArray, isNotNull, notInArray, or, sql } from "dri
 import { db } from "./client";
 import { itemMentions, items, redditPosts, spreadsheetRows, spreadsheets, stores } from "./schema";
 
-export type SortKey = "trending" | "newest" | "price";
+export type SortKey = "trending" | "newest" | "price" | "value";
+
+// Recency window for the dedicated /trending page: only mentions from Reddit
+// posts newer than this count toward "what's hot right now". Tunable — kept
+// generous because the Reddit scrape runs weekly.
+const TRENDING_WINDOW_DAYS = 45;
+
+// "Best value" ranking: proven demand (rebuy rate × sales) per yuan. Null-guarded
+// so items missing price/sold/rebuy sink to the bottom rather than erroring.
+const valueScore = sql`(coalesce(${items.sellerRebuyRate}, 0) * ln(coalesce(${items.sold}, 0) + 1) / nullif(${items.priceCny}, 0))`;
 
 export type ItemCardData = {
   id: number;
@@ -60,7 +69,9 @@ export async function getItems(opts: {
       ? desc(items.createdAt)
       : opts.sort === "price"
         ? sql`${items.priceCny} asc nulls last`
-        : desc(trendScore);
+        : opts.sort === "value"
+          ? sql`${valueScore} desc nulls last`
+          : desc(trendScore);
 
   const page = Math.max(1, opts.page ?? 1);
   const rows = await db
@@ -82,6 +93,82 @@ export async function getItems(opts: {
     .where(and(...filters))
     .groupBy(items.id)
     .orderBy(orderBy)
+    .limit(PAGE_SIZE)
+    .offset((page - 1) * PAGE_SIZE);
+  return { items: rows.map(({ total, ...r }) => r), total: rows[0]?.total ?? 0 };
+}
+
+/**
+ * "Trending" — items whose Reddit buzz is recent, not all-time. Only mentions
+ * from posts within TRENDING_WINDOW_DAYS count, so a once-viral item from months
+ * ago drops off. Ranked by recent trend score (mentions + recent post score).
+ */
+export async function getTrending(opts: { page?: number } = {}): Promise<Paginated<ItemCardData>> {
+  const page = Math.max(1, opts.page ?? 1);
+  const rows = await db
+    .select({
+      id: items.id,
+      titleEn: items.titleEn,
+      brand: items.brand,
+      category: items.category,
+      priceCny: items.priceCny,
+      imageUrls: items.imageUrls,
+      sold: items.sold,
+      mentionCount,
+      trendScore,
+      total: totalCount,
+    })
+    .from(items)
+    // inner join semantics: the postedAt filter drops items with no recent mention
+    .innerJoin(itemMentions, eq(itemMentions.itemId, items.id))
+    .innerJoin(redditPosts, eq(redditPosts.id, itemMentions.redditPostId))
+    .where(
+      and(
+        eq(items.status, "active"),
+        sql`${redditPosts.postedAt} > now() - (${TRENDING_WINDOW_DAYS} * interval '1 day')`,
+      ),
+    )
+    .groupBy(items.id)
+    .orderBy(desc(trendScore))
+    .limit(PAGE_SIZE)
+    .offset((page - 1) * PAGE_SIZE);
+  return { items: rows.map(({ total, ...r }) => r), total: rows[0]?.total ?? 0 };
+}
+
+/**
+ * "Slept on" — proven but unhyped. A seller rebuy rate in the top 30% (percentile
+ * computed live, so it self-tunes) plus real sales, but zero Reddit mentions:
+ * the source data says people keep buying, the community just hasn't caught on.
+ */
+export async function getSleptOn(opts: { page?: number } = {}): Promise<Paginated<ItemCardData>> {
+  const page = Math.max(1, opts.page ?? 1);
+  const rows = await db
+    .select({
+      id: items.id,
+      titleEn: items.titleEn,
+      brand: items.brand,
+      category: items.category,
+      priceCny: items.priceCny,
+      imageUrls: items.imageUrls,
+      sold: items.sold,
+      mentionCount: sql<number>`0`,
+      trendScore: sql<number>`0`,
+      total: totalCount,
+    })
+    .from(items)
+    .where(
+      and(
+        eq(items.status, "active"),
+        isNotNull(items.sellerRebuyRate),
+        sql`${items.sellerRebuyRate} >= (
+          SELECT percentile_cont(0.7) WITHIN GROUP (ORDER BY seller_rebuy_rate)
+          FROM items WHERE status = 'active' AND seller_rebuy_rate IS NOT NULL
+        )`,
+        sql`coalesce(${items.sold}, 0) >= 20`,
+        sql`NOT EXISTS (SELECT 1 FROM item_mentions WHERE item_id = ${items.id})`,
+      ),
+    )
+    .orderBy(desc(items.sellerRebuyRate), sql`${items.sold} desc nulls last`)
     .limit(PAGE_SIZE)
     .offset((page - 1) * PAGE_SIZE);
   return { items: rows.map(({ total, ...r }) => r), total: rows[0]?.total ?? 0 };
