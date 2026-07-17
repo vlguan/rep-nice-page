@@ -48,6 +48,16 @@ def main() -> None:
     load_env_file()
     conn = db.get_conn(os.environ["DATABASE_URL"])
     deps = build_default_deps(conn)
+    # One-shot: seed store items + translate titles when SEED_STORES is set.
+    # Runs server-side so it survives a closed laptop; unset the var afterward.
+    if os.environ.get("SEED_STORES"):
+        try:
+            from . import store_seed
+            logger.info("SEED_STORES set: seeding store items, then translating titles")
+            store_seed.run(commit=True)
+            store_seed.translate_titles(commit=True)
+        except Exception:
+            logger.error("store seed failed", exc_info=True)
     logger.info("worker started: weekly run Mondays %02d:00 UTC, %ss promotion polling", RUN_HOUR_UTC, POLL_SECONDS)
     while True:
         try:
