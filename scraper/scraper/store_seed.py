@@ -31,14 +31,20 @@ STORE_JSON = pathlib.Path(__file__).parent / "data" / "weidian_stores.json"
 CJK = re.compile(r"[一-鿿]")
 TRANSLATE_BATCH = 25
 CATEGORIES = ("clothing", "jewelry", "shoes", "accessory")
-STYLES = ("gorpcore", "hypebeast", "athleisure", "old money", "luxury", "minimalist")
+STYLES = (
+    "gorpcore", "hypebeast", "athleisure", "old money", "luxury", "minimalist",
+    "alt", "opium", "goth",
+)
 STYLE_GUIDE = (
     "- gorpcore: outdoor/technical — The North Face, Arc'teryx, Salomon, Patagonia, Nike ACG, Stone Island\n"
     "- hypebeast: loud streetwear/designer — Supreme, BAPE, Off-White, Chrome Hearts, Amiri, Gallery Dept, Hellstar, Denim Tears\n"
     "- athleisure: sportswear/gym — Nike, Adidas, Jordan, Lululemon, Essentials tracksuits\n"
     "- old money: prep/classic — Ralph Lauren, Zegna, Brooks Brothers, Lacoste, J.Crew\n"
     "- luxury: high-fashion houses — Louis Vuitton, Gucci, Chanel, Dior, Prada, Balenciaga\n"
-    "- minimalist: plain basics — Fear of God Essentials, Uniqlo-style, plain tees"
+    "- minimalist: plain basics — Fear of God Essentials, Uniqlo-style, plain tees\n"
+    "- alt: punk/emo/skater/scene — band tees, plaid & flannel, chains, Dickies, Thrasher, checkerboard, e-boy/e-girl layering (accessible mainstream-alt)\n"
+    "- opium: Playboi Carti/Opium rockstar-grunge — distressed skinny or baggy denim, studded belts, leather, vampire-punk edge; Chrome Hearts, Vlone, Enfants Riches Déprimés, Hysteric Glamour, Rick Owens boots (grungy and destroyed, not clean)\n"
+    "- goth: dark avant-garde/darkwear — head-to-toe black, draped silhouettes, platform & combat boots, leather; Rick Owens, Julius, Guidi, Yohji-style black (monochrome, refined-dark)"
 )
 
 
@@ -298,15 +304,22 @@ def classify_items(commit: bool = True) -> int:
     return done
 
 
-def classify_style(commit: bool = True) -> int:
-    """Batch-tag items with a style aesthetic (gorpcore, hypebeast, ...)."""
+def classify_style(commit: bool = True, reclassify: bool = False) -> int:
+    """Batch-tag items with a style aesthetic (gorpcore, hypebeast, ...).
+
+    Normally only tags unstyled items (style IS NULL). Pass reclassify=True for a
+    one-off pass that re-evaluates every active item against the full guide;
+    labels are only overwritten when the model returns a confident (non-null)
+    style, so unsure items keep their existing label.
+    """
     import anthropic
 
     conn = _connect()
     llm = anthropic.Anthropic()
-    rows = conn.execute(
-        "SELECT id, title_en, brand FROM items WHERE title_en IS NOT NULL AND style IS NULL AND status='active'"
-    ).fetchall()
+    where = "title_en IS NOT NULL AND status='active'"
+    if not reclassify:
+        where += " AND style IS NULL"
+    rows = conn.execute(f"SELECT id, title_en, brand FROM items WHERE {where}").fetchall()
     logger.info("classify_style: %d unstyled items", len(rows))
     prompt = (
         "Classify each rep-fashion product into exactly ONE style aesthetic, or null if unclear.\n"
@@ -399,6 +412,8 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--commit", action="store_true")
     ap.add_argument("--phase", choices=["all", "stores", "crawl", "prune", "translate", "classify", "style"], default="all")
+    ap.add_argument("--reclassify", action="store_true",
+                    help="with --phase style: re-evaluate ALL active items, not just unstyled ones")
     args = ap.parse_args()
     c = args.commit
     if args.phase in ("all", "stores"):
@@ -412,7 +427,7 @@ def main() -> None:
     if args.phase in ("all", "classify"):
         classify_items(c)
     if args.phase in ("all", "style"):
-        classify_style(c)
+        classify_style(c, reclassify=args.reclassify)
 
 
 if __name__ == "__main__":
