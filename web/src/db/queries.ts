@@ -1,4 +1,4 @@
-import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, sql } from "drizzle-orm";
 import { db } from "./client";
 import { itemMentions, items, redditPosts, spreadsheetRows, spreadsheets, stores } from "./schema";
 
@@ -147,7 +147,21 @@ export type StoreRow = {
   rebuyRate: number | null;
 };
 
-export async function getStores(): Promise<StoreRow[]> {
+export type StoreSort = "rate" | "items" | "name";
+
+export async function getStores(opts: { q?: string; sort?: StoreSort } = {}): Promise<StoreRow[]> {
+  const conds = [];
+  if (opts.q) {
+    const like = `%${opts.q}%`;
+    conds.push(sql`(${stores.name} ILIKE ${like} OR ${stores.note} ILIKE ${like})`);
+  }
+  const orderBy =
+    opts.sort === "items"
+      ? desc(sql`count(${items.id})`)
+      : opts.sort === "name"
+        ? asc(stores.name)
+        : sql`avg(${items.sellerRebuyRate}) desc nulls last`; // default: highest repeat first
+
   return db
     .select({
       userid: stores.userid,
@@ -158,9 +172,10 @@ export async function getStores(): Promise<StoreRow[]> {
     })
     .from(stores)
     .leftJoin(items, and(eq(items.shopUserid, stores.userid), eq(items.status, "active")))
+    .where(conds.length ? and(...conds) : undefined)
     .groupBy(stores.userid, stores.name, stores.note)
     .having(sql`count(${items.id}) > 0`)
-    .orderBy(desc(sql`count(${items.id})`));
+    .orderBy(orderBy);
 }
 
 export async function getFilterOptions(): Promise<{ brands: string[]; categories: string[]; styles: string[] }> {

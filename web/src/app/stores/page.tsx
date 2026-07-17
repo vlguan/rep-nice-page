@@ -1,10 +1,16 @@
 import Link from "next/link";
-import { getStores } from "@/db/queries";
+import { StoreControls } from "@/components/StoreControls";
+import { getStores, type StoreSort } from "@/db/queries";
 
 export const dynamic = "force-dynamic";
 
-export default async function StoresPage() {
-  const stores = await getStores();
+type SearchParams = Promise<{ q?: string; sort?: string }>;
+
+export default async function StoresPage({ searchParams }: { searchParams: SearchParams }) {
+  const params = await searchParams;
+  const q = params.q?.trim();
+  const sort = (["rate", "items", "name"].includes(params.sort ?? "") ? params.sort : "rate") as StoreSort;
+  const stores = await getStores({ q, sort });
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-8 space-y-6">
@@ -15,9 +21,10 @@ export default async function StoresPage() {
           Curated Weidian stores from the community mega-list. Repeat-buyer rate: higher = more people order again.
         </p>
       </header>
+      <StoreControls current={{ q: params.q, sort: params.sort }} />
 
       {stores.length === 0 ? (
-        <p className="text-zinc-500 py-16 text-center">No stores yet.</p>
+        <p className="text-zinc-500 py-16 text-center">{q ? "No stores match." : "No stores yet."}</p>
       ) : (
         <ul className="grid gap-3 sm:grid-cols-2">
           {stores.map((s) => (
