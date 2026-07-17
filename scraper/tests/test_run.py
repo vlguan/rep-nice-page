@@ -29,6 +29,7 @@ def make_deps(posts, judge_result):
         sync_sheets=lambda: None,
         promote=lambda: 0,
         promote_requested=lambda: 0,
+        classify=lambda: None,
     )
 
 

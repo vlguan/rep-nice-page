@@ -23,6 +23,7 @@ class Deps:
     sync_sheets: Callable[[], None]
     promote: Callable[[], int]
     promote_requested: Callable[[], int]
+    classify: Callable[[], None]
 
 
 @dataclass
@@ -119,6 +120,12 @@ def run_pipeline(conn, deps: Deps, limit: int | None = None, backfill: bool = Fa
                 logger.info("dedupe_shared_images: cleaned galleries on %s items", changed)
         except Exception:
             logger.warning("dedupe_shared_images failed", exc_info=True)
+        try:
+            # tag any newly-ingested items with category + style (idempotent: only
+            # touches rows still missing them, so this is cheap per run).
+            deps.classify()
+        except Exception:
+            logger.warning("classification failed", exc_info=True)
     except Exception as e:
         error = f"{type(e).__name__}: {e}"
         logger.error("pipeline aborted", exc_info=True)
@@ -169,7 +176,15 @@ def build_default_deps(conn) -> Deps:
             translate=lambda listing, context: translate_mod.translate_listing(llm, listing, context),
             budget=10, requested_only=True,
         ),
+        classify=_classify_new_items,
     )
+
+
+def _classify_new_items() -> None:
+    from . import store_seed
+
+    store_seed.classify_items(commit=True)
+    store_seed.classify_style(commit=True)
 
 
 def load_env_file(path: "pathlib.Path | None" = None) -> None:
