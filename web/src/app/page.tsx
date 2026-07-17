@@ -21,9 +21,9 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Digital Canal St",
     description: "Curated replica fashion catalog with one-click Superbuy links",
-    images: ["/banner.png"],
+    images: ["/hero.png"],
   },
-  twitter: { card: "summary_large_image", images: ["/banner.png"] },
+  twitter: { card: "summary_large_image", images: ["/hero.png"] },
 };
 
 type SearchParams = Promise<{ category?: string; brand?: string; style?: string; sort?: string; q?: string; shop?: string; page?: string }>;
@@ -56,13 +56,10 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         <CatalogTracker />
       </Suspense>
       <Banner />
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Digital Canal St</h1>
-          <p className="text-sm text-zinc-500">
-            trending rep fashion, begin chinamaxxing
-          </p>
-        </div>
+      <header className="flex items-center justify-between gap-4">
+        <p className="text-sm text-zinc-500">
+          trending rep fashion, begin chinamaxxing
+        </p>
         <div className="flex shrink-0 items-center gap-2">
           <Link
             href="/stores"
