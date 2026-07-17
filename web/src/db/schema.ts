@@ -58,6 +58,7 @@ export const scrapeRuns = pgTable("scrape_runs", {
   itemsAdded: integer("items_added"),
   itemsDeactivated: integer("items_deactivated"),
   error: text("error"),
+  kind: text("kind").default("reddit"), // reddit | store
 });
 
 export const spreadsheets = pgTable("spreadsheets", {

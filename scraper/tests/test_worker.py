@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from scraper.models import JudgeResult
-from scraper.worker import RUN_HOUR_UTC, tick, weekly_run_done
+from scraper.worker import RUN_HOUR_UTC, monthly_store_done, tick, weekly_run_done
 from tests.conftest import requires_db
 from tests.test_run import make_deps
 
@@ -11,6 +11,7 @@ pytestmark = requires_db
 MON_9 = datetime(2026, 7, 13, RUN_HOUR_UTC, 30, tzinfo=timezone.utc)
 MON_EARLY = datetime(2026, 7, 13, RUN_HOUR_UTC - 1, 0, tzinfo=timezone.utc)
 WED = datetime(2026, 7, 15, 3, 0, tzinfo=timezone.utc)
+WED_9 = datetime(2026, 7, 15, RUN_HOUR_UTC, 30, tzinfo=timezone.utc)
 
 
 def test_weekly_run_done_false_when_no_runs(conn):
@@ -44,3 +45,32 @@ def test_tick_catches_up_later_in_week(conn):
     deps = make_deps([], JudgeResult(True, [], None, None, None, ""))
     tick(conn, deps, now=WED)
     assert conn.execute("SELECT count(*) FROM scrape_runs").fetchone()[0] == 1
+
+
+def test_weekly_guard_ignores_store_runs(conn):
+    conn.execute("INSERT INTO scrape_runs (started_at, finished_at, kind) VALUES (now(), now(), 'store')")
+    assert weekly_run_done(conn) is False  # a store run doesn't satisfy the weekly guard
+
+
+def test_monthly_guard_ignores_reddit_runs(conn):
+    conn.execute("INSERT INTO scrape_runs (started_at, finished_at, kind) VALUES (now(), now(), 'reddit')")
+    assert monthly_store_done(conn) is False  # a reddit run doesn't satisfy the monthly guard
+
+
+def test_tick_runs_store_crawl_once_per_month(conn, monkeypatch):
+    import scraper.worker as w
+
+    calls = []
+
+    def fake_crawl(c):
+        calls.append(True)
+        c.execute("INSERT INTO scrape_runs (started_at, finished_at, kind) VALUES (now(), now(), 'store')")
+
+    monkeypatch.setattr(w, "run_store_crawl", fake_crawl)
+    deps = make_deps([], JudgeResult(True, [], None, None, None, ""))
+    # weekly already done -> tick falls through to the monthly store branch
+    conn.execute("INSERT INTO scrape_runs (started_at, finished_at, kind) VALUES (now(), now(), 'reddit')")
+    tick(conn, deps, now=WED_9)
+    assert calls == [True]
+    tick(conn, deps, now=WED_9)  # same month: guarded
+    assert calls == [True]

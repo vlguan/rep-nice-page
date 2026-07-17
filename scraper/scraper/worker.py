@@ -17,9 +17,17 @@ REQUEST_BATCH = 10
 
 
 def weekly_run_done(conn) -> bool:
-    """True if the pipeline already ran this week (Postgres week starts Monday)."""
+    """True if the Reddit pipeline already ran this week (Postgres week starts Monday)."""
     row = conn.execute(
-        "SELECT 1 FROM scrape_runs WHERE started_at >= date_trunc('week', now()) LIMIT 1"
+        "SELECT 1 FROM scrape_runs WHERE kind = 'reddit' AND started_at >= date_trunc('week', now()) LIMIT 1"
+    ).fetchone()
+    return row is not None
+
+
+def monthly_store_done(conn) -> bool:
+    """True if the vetted-store crawl already ran this calendar month."""
+    row = conn.execute(
+        "SELECT 1 FROM scrape_runs WHERE kind = 'store' AND started_at >= date_trunc('month', now()) LIMIT 1"
     ).fetchone()
     return row is not None
 
@@ -31,6 +39,26 @@ def _due(now: datetime) -> bool:
     return now.weekday() == RUN_WEEKDAY and now.hour >= RUN_HOUR_UTC
 
 
+def run_store_crawl(conn) -> None:
+    """Monthly: crawl vetted stores for new items, prune, translate, classify."""
+    from . import store_seed
+
+    started = datetime.now(timezone.utc)
+    error = None
+    added = 0
+    try:
+        store_seed.seed_stores(commit=True)
+        added = store_seed.run(commit=True)
+        store_seed.prune_nonfashion(commit=True)
+        store_seed.translate_titles(commit=True)
+        store_seed.classify_items(commit=True)
+        store_seed.classify_style(commit=True)
+    except Exception as e:
+        error = f"{type(e).__name__}: {e}"
+        logger.error("monthly store crawl failed", exc_info=True)
+    db.record_run(conn, started, 0, added, 0, error, kind="store")
+
+
 def tick(conn, deps, now: datetime | None = None) -> None:
     now = now or datetime.now(timezone.utc)
     if _due(now) and not weekly_run_done(conn):
@@ -39,6 +67,9 @@ def tick(conn, deps, now: datetime | None = None) -> None:
             run_pipeline(conn, deps)
         except Exception:
             logger.error("weekly run failed", exc_info=True)  # recorded in scrape_runs; guard holds for the week
+    elif now.hour >= RUN_HOUR_UTC and not monthly_store_done(conn):
+        logger.info("worker: starting monthly vetted-store crawl")
+        run_store_crawl(conn)  # records its own scrape_runs row (kind='store')
     else:
         deps.promote_requested()
 

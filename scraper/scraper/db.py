@@ -320,12 +320,13 @@ def record_run(
     items_added: int,
     items_deactivated: int,
     error: str | None,
+    kind: str = "reddit",
 ) -> None:
     conn.execute(
         """
         INSERT INTO scrape_runs
-          (started_at, finished_at, posts_seen, items_added, items_deactivated, error)
-        VALUES (%s, now(), %s, %s, %s, %s)
+          (started_at, finished_at, posts_seen, items_added, items_deactivated, error, kind)
+        VALUES (%s, now(), %s, %s, %s, %s, %s)
         """,
-        (started_at, posts_seen, items_added, items_deactivated, error),
+        (started_at, posts_seen, items_added, items_deactivated, error, kind),
     )
