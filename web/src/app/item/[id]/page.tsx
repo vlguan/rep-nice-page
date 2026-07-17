@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { BackLink } from "@/components/BackLink";
 import { GuideButton } from "@/components/GuideButton";
 import { ItemGallery } from "@/components/ItemGallery";
 import { getItemDetail } from "@/db/queries";
@@ -33,7 +34,7 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-8 space-y-8">
-      <Link href="/" className="text-sm text-zinc-500 hover:underline">← back to all items</Link>
+      <BackLink className="text-sm text-zinc-500 hover:underline" />
 
       <div className="grid md:grid-cols-2 gap-6 md:items-start">
         <ItemGallery images={item.imageUrls ?? []} alt={item.titleEn ?? "item"} />
