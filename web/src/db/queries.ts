@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNotNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, ne, or, sql } from "drizzle-orm";
 import { db } from "./client";
 import { itemMentions, items, redditPosts, spreadsheetRows, spreadsheets, stores } from "./schema";
 
@@ -18,6 +18,7 @@ export type ItemCardData = {
 
 export type ItemDetail = ItemCardData & {
   descriptionEn: string | null;
+  style: string | null;
   sellerRebuyRate: number | null;
   productUrl: string;
   platform: string;
@@ -97,6 +98,7 @@ export async function getItemDetail(id: number): Promise<ItemDetail | null> {
       imageUrls: items.imageUrls,
       sold: items.sold,
       descriptionEn: items.descriptionEn,
+      style: items.style,
       sellerRebuyRate: items.sellerRebuyRate,
       productUrl: items.productUrl,
       platform: items.platform,
@@ -146,6 +148,43 @@ export type StoreRow = {
   itemCount: number;
   rebuyRate: number | null;
 };
+
+/**
+ * Recommend items matching the user's viewed styles/brands — one standout item
+ * per category (DISTINCT ON), ranked by brand match, then style match, then
+ * popularity. Returns [] when there's no taste signal.
+ */
+export async function getRecommendations(opts: {
+  styles: string[];
+  brands: string[];
+  excludeId?: number;
+}): Promise<ItemCardData[]> {
+  const { styles, brands, excludeId } = opts;
+  if (styles.length === 0 && brands.length === 0) return [];
+
+  const brandMatch = brands.length ? inArray(items.brand, brands) : sql`false`;
+  const styleMatch = styles.length ? inArray(items.style, styles) : sql`false`;
+  const score = sql<number>`((case when ${brandMatch} then 2 else 0 end) + (case when ${styleMatch} then 1 else 0 end))`;
+
+  const conds = [eq(items.status, "active"), isNotNull(items.category), or(brandMatch, styleMatch)];
+  if (excludeId) conds.push(ne(items.id, excludeId));
+
+  return db
+    .selectDistinctOn([items.category], {
+      id: items.id,
+      titleEn: items.titleEn,
+      brand: items.brand,
+      category: items.category,
+      priceCny: items.priceCny,
+      imageUrls: items.imageUrls,
+      sold: items.sold,
+      mentionCount: sql<number>`0`,
+      trendScore: sql<number>`0`,
+    })
+    .from(items)
+    .where(and(...conds))
+    .orderBy(items.category, desc(score), sql`${items.sold} desc nulls last`, desc(items.id));
+}
 
 export type StoreSort = "rate" | "items" | "name";
 

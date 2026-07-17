@@ -1,10 +1,13 @@
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { FilterBar } from "@/components/FilterBar";
 import { GuideButton } from "@/components/GuideButton";
 import { ItemCard } from "@/components/ItemCard";
 import { Pagination } from "@/components/Pagination";
+import { RecommendationRow } from "@/components/RecommendationRow";
 import { StagingCard } from "@/components/StagingCard";
-import { flagRowsForPromotion, getFilterOptions, getItems, PAGE_SIZE, searchItems, searchStagingRows, type SortKey } from "@/db/queries";
+import { flagRowsForPromotion, getFilterOptions, getItems, getRecommendations, PAGE_SIZE, searchItems, searchStagingRows, type SortKey } from "@/db/queries";
+import { parseTaste, TASTE_COOKIE } from "@/lib/taste";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +25,13 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   ]);
   const { items: itemList, total } = result;
   if (q) void flagRowsForPromotion(q).catch(() => {});
+
+  // "For you" — only on the bare catalog view (no search/filters, first page).
+  const bareView = !q && !params.category && !params.brand && !params.style && !params.shop && page === 1;
+  const taste = parseTaste((await cookies()).get(TASTE_COOKIE)?.value);
+  const recs = bareView && (taste.styles.length || taste.brands.length)
+    ? await getRecommendations({ styles: taste.styles, brands: taste.brands })
+    : [];
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 space-y-6">
@@ -48,6 +58,13 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         styles={filterOptions.styles}
         current={{ category: params.category, brand: params.brand, style: params.style, sort: params.sort, q: params.q }}
       />
+      {recs.length > 0 && (
+        <RecommendationRow
+          title="For you"
+          subtitle={`Because you've been browsing ${taste.styles[0] ?? taste.brands[0]}`}
+          items={recs}
+        />
+      )}
       {itemList.length === 0 ? (
         <p className="text-zinc-500 py-16 text-center">
           {total === 0 ? "No items match." : "No items on this page."}

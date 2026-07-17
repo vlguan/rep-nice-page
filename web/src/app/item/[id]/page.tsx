@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 import { BackLink } from "@/components/BackLink";
 import { GuideButton } from "@/components/GuideButton";
 import { ItemGallery } from "@/components/ItemGallery";
-import { getItemDetail } from "@/db/queries";
+import { RecommendationRow } from "@/components/RecommendationRow";
+import { TrackView } from "@/components/TrackView";
+import { getItemDetail, getRecommendations } from "@/db/queries";
 import { cnyToUsd, reviewQuote } from "@/lib/format";
 import { superbuyUrl } from "@/lib/superbuy";
 
@@ -32,8 +34,15 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
   }
   const reviews = [...reviewMap.values()].sort((a, b) => b.score - a.score);
 
+  const more = await getRecommendations({
+    styles: item.style ? [item.style] : [],
+    brands: item.brand ? [item.brand] : [],
+    excludeId: item.id,
+  });
+
   return (
     <main className="mx-auto max-w-4xl px-4 py-8 space-y-8">
+      <TrackView style={item.style} brand={item.brand} />
       <BackLink className="text-sm text-zinc-500 hover:underline" />
 
       <div className="grid md:grid-cols-2 gap-6 md:items-start">
@@ -116,6 +125,8 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
           <p className="mt-1 text-zinc-500 max-w-2xl">{summary}</p>
         </details>
       )}
+
+      <RecommendationRow title="More like this" items={more} />
     </main>
   );
 }
