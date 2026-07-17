@@ -25,20 +25,7 @@ export function GuideButton({ label = "How to buy" }: { label?: string }) {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-4 border-b border-zinc-200 p-4">
-              <div>
-                <h2 className="font-bold">{SUPERBUY_GUIDE.title}</h2>
-                <p className="text-xs text-zinc-500">
-                  Community guide by {SUPERBUY_GUIDE.author} ·{" "}
-                  <a
-                    href={SUPERBUY_GUIDE.sourceUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:underline"
-                  >
-                    original post
-                  </a>
-                </p>
-              </div>
+              <h2 className="font-bold">{SUPERBUY_GUIDE.title}</h2>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
