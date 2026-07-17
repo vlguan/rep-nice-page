@@ -53,9 +53,11 @@ def main() -> None:
     if os.environ.get("SEED_STORES"):
         try:
             from . import store_seed
-            logger.info("SEED_STORES set: seeding store items, then translating titles")
+            logger.info("SEED_STORES set: stores + crawl + translate + classify")
+            store_seed.seed_stores(commit=True)
             store_seed.run(commit=True)
             store_seed.translate_titles(commit=True)
+            store_seed.classify_items(commit=True)
         except Exception:
             logger.error("store seed failed", exc_info=True)
     logger.info("worker started: weekly run Mondays %02d:00 UTC, %ss promotion polling", RUN_HOUR_UTC, POLL_SECONDS)

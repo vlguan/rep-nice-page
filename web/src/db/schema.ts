@@ -16,6 +16,7 @@ export const items = pgTable("items", {
   sellerName: text("seller_name"),
   sellerRebuyRate: integer("seller_rebuy_rate"), // % of shop's buyers who buy again
   sold: integer("sold"), // units sold (from Weidian shop item list; store-seeded items)
+  shopUserid: text("shop_userid"), // Weidian shop this item came from (-> stores.userid)
   imageUrls: jsonb("image_urls").$type<string[]>(),
   status: text("status").notNull().default("active"), // active | inactive
   lastValidatedAt: timestamp("last_validated_at", { withTimezone: true }),
@@ -100,3 +101,12 @@ export const itemSpreadsheetMentions = pgTable(
   },
   (t) => [primaryKey({ columns: [t.itemId, t.spreadsheetId] })],
 );
+
+// Vetted Weidian stores from the community mega-list; note is the curator's blurb.
+export const stores = pgTable("stores", {
+  id: serial("id").primaryKey(),
+  userid: text("userid").notNull().unique(),
+  name: text("name"),
+  note: text("note"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});

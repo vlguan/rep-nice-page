@@ -27,9 +27,14 @@ UA = ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.
 MIN_SOLD = 5
 SCROLLS = 8
 LIST_APIS = ("getItemListForCommonItemSection", "getCateItemListForCommonItemSection")
-STORE_FILE = pathlib.Path(__file__).parent / "data" / "weidian_stores.txt"
+STORE_JSON = pathlib.Path(__file__).parent / "data" / "weidian_stores.json"
 CJK = re.compile(r"[一-鿿]")
 TRANSLATE_BATCH = 25
+CATEGORIES = ("clothing", "jewelry", "shoes", "accessory")
+
+
+def _stores() -> list[dict]:
+    return json.loads(STORE_JSON.read_text())
 
 _AGENT_SPAM = re.compile(
     r"^.*?(?:use|via)?\s*(?:allchinabuy|mulebuy|superbuy|hoobuy|basetao|cnfans|kakobuy|"
@@ -128,7 +133,7 @@ def run(commit: bool = True) -> int:
     """Crawl every store and insert new items with >= MIN_SOLD sales. Returns count."""
     from playwright.sync_api import sync_playwright
 
-    ids = STORE_FILE.read_text().split()
+    ids = [s["userid"] for s in _stores()]
     conn = _connect()
 
     def execute(sql, params):
@@ -142,7 +147,7 @@ def run(commit: bool = True) -> int:
     existing = {r[0] for r in conn.execute("SELECT product_url FROM items").fetchall()}
     logger.info("store seed: %d stores, %d items already in catalog", len(ids), len(existing))
 
-    inserted = alive = dead = 0
+    inserted = tagged = alive = dead = 0
     with sync_playwright() as p:
         b = p.chromium.launch()
         for i, uid in enumerate(ids, 1):
@@ -153,25 +158,32 @@ def run(commit: bool = True) -> int:
             dead += 0 if raw else 1
             for it in raw:
                 r = _to_row(it, rebuy)
-                if not r or r["product_url"] in existing:
+                if not r:
+                    continue
+                if r["product_url"] in existing:
+                    if commit:  # backfill the shop link on an already-seeded item
+                        execute("UPDATE items SET shop_userid=%s WHERE product_url=%s AND shop_userid IS NULL",
+                                (uid, r["product_url"]))
+                        tagged += 1
                     continue
                 existing.add(r["product_url"])
                 if commit:
                     execute(
                         """
                         INSERT INTO items (product_url, platform_item_id, platform, title_zh,
-                            title_en, price_cny, image_urls, seller_rebuy_rate, sold, status)
-                        VALUES (%s,%s,'weidian',%s,%s,%s,%s,%s,%s,'active')
+                            title_en, price_cny, image_urls, seller_rebuy_rate, sold, shop_userid, status)
+                        VALUES (%s,%s,'weidian',%s,%s,%s,%s,%s,%s,%s,'active')
                         ON CONFLICT (product_url) DO NOTHING
                         """,
                         (r["product_url"], r["platform_item_id"], r["title_zh"], r["title_en"],
-                         r["price_cny"], Json(r["image_urls"]), r["seller_rebuy_rate"], r["sold"]),
+                         r["price_cny"], Json(r["image_urls"]), r["seller_rebuy_rate"], r["sold"], uid),
                     )
                 inserted += 1
             if i % 10 == 0:
-                logger.info("store seed %d/%d: alive=%d dead=%d inserted=%d", i, len(ids), alive, dead, inserted)
+                logger.info("store seed %d/%d: alive=%d dead=%d inserted=%d tagged=%d",
+                            i, len(ids), alive, dead, inserted, tagged)
         b.close()
-    logger.info("store seed DONE: alive=%d dead=%d inserted=%d", alive, dead, inserted)
+    logger.info("store seed DONE: alive=%d dead=%d inserted=%d shop_tagged=%d", alive, dead, inserted, tagged)
     return inserted
 
 
@@ -213,6 +225,70 @@ def translate_titles(commit: bool = True) -> int:
     return done
 
 
+def seed_stores(commit: bool = True) -> int:
+    """Upsert the vetted-store directory (userid, name, note) into `stores`."""
+    conn = _connect()
+    n = 0
+    for s in _stores():
+        if commit:
+            conn.execute(
+                "INSERT INTO stores (userid, name, note) VALUES (%s,%s,%s) "
+                "ON CONFLICT (userid) DO UPDATE SET name=EXCLUDED.name, note=EXCLUDED.note",
+                (s["userid"], s.get("name"), s.get("note")),
+            )
+        n += 1
+    logger.info("seed_stores: %d stores upserted", n)
+    return n
+
+
+def classify_items(commit: bool = True) -> int:
+    """Batch-classify unclassified items' brand + category from their English title."""
+    import anthropic
+
+    conn = _connect()
+    llm = anthropic.Anthropic()
+    rows = conn.execute(
+        "SELECT id, title_en FROM items WHERE title_en IS NOT NULL AND category IS NULL"
+    ).fetchall()
+    logger.info("classify_items: %d unclassified items", len(rows))
+    prompt = (
+        "For each rep-fashion product title, give its brand and category. "
+        "category MUST be exactly one of: clothing, jewelry, shoes, accessory. "
+        "brand is the main brand (Nike, Yeezy, Supreme, ...) or null if unclear. "
+        'Return ONLY a JSON array of {n} objects [{{"brand":..,"category":..}}], same order.\n\nTITLES:\n{titles}'
+    )
+    done = 0
+    for i in range(0, len(rows), TRANSLATE_BATCH):
+        chunk = rows[i:i + TRANSLATE_BATCH]
+        titles = "\n".join(f"{j+1}. {t}" for j, (_, t) in enumerate(chunk))
+        try:
+            msg = llm.messages.create(
+                model=MODEL, max_tokens=2048,
+                messages=[{"role": "user", "content": prompt.format(n=len(chunk), titles=titles)}],
+            )
+            text = msg.content[0].text
+            out = json.loads(text[text.find("["):text.rfind("]") + 1])
+        except Exception as e:
+            logger.warning("classify batch %d failed: %s", i // TRANSLATE_BATCH, e)
+            continue
+        if not isinstance(out, list) or len(out) != len(chunk):
+            continue
+        for (item_id, _), o in zip(chunk, out):
+            if not isinstance(o, dict):
+                continue
+            cat = o.get("category") if o.get("category") in CATEGORIES else None
+            brand = o.get("brand")
+            brand = brand.strip() or None if isinstance(brand, str) else None
+            if commit and (cat or brand):
+                conn.execute(
+                    "UPDATE items SET category=COALESCE(%s,category), brand=COALESCE(%s,brand) WHERE id=%s",
+                    (cat, brand, item_id),
+                )
+                done += 1
+    logger.info("classify_items DONE: updated=%d", done)
+    return done
+
+
 def main() -> None:
     import argparse
 
@@ -222,11 +298,17 @@ def main() -> None:
     load_env_file()
     ap = argparse.ArgumentParser()
     ap.add_argument("--commit", action="store_true")
-    ap.add_argument("--translate-only", action="store_true")
+    ap.add_argument("--phase", choices=["all", "stores", "crawl", "translate", "classify"], default="all")
     args = ap.parse_args()
-    if not args.translate_only:
-        run(commit=args.commit)
-    translate_titles(commit=args.commit)
+    c = args.commit
+    if args.phase in ("all", "stores"):
+        seed_stores(c)
+    if args.phase in ("all", "crawl"):
+        run(commit=c)
+    if args.phase in ("all", "translate"):
+        translate_titles(c)
+    if args.phase in ("all", "classify"):
+        classify_items(c)
 
 
 if __name__ == "__main__":
