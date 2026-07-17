@@ -6,6 +6,13 @@ import { ItemImage } from "./ItemImage";
 export function ItemCard({ item }: { item: ItemCardData }) {
   const cover = item.imageUrls?.[0] ?? null;
   const price = item.priceCny ? Number(item.priceCny) : null;
+  // Reddit items lead with post count; store-seeded items lead with sales.
+  const meta =
+    item.mentionCount > 0
+      ? `${item.mentionCount} post${item.mentionCount === 1 ? "" : "s"}`
+      : item.sold != null
+        ? `${item.sold.toLocaleString()} sold`
+        : null;
   return (
     <Link
       href={`/item/${item.id}`}
@@ -34,9 +41,7 @@ export function ItemCard({ item }: { item: ItemCardData }) {
           ) : (
             <span className="text-zinc-400">price unknown</span>
           )}
-          <span className="text-xs text-zinc-500">
-            {item.mentionCount} post{item.mentionCount === 1 ? "" : "s"}
-          </span>
+          {meta && <span className="text-xs text-zinc-500">{meta}</span>}
         </div>
       </div>
     </Link>

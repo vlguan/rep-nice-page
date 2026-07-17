@@ -47,6 +47,7 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
               ¥{price.toFixed(0)} <span className="text-zinc-500 text-sm">≈ ${cnyToUsd(price).toFixed(0)} USD</span>
             </p>
           )}
+          {item.sold != null && <p className="text-sm text-zinc-500">{item.sold.toLocaleString()} sold</p>}
           {item.sellerName && <p className="text-sm text-zinc-500">Seller: {item.sellerName}</p>}
           {item.sellerRebuyRate !== null && (
             <p className="text-sm">

@@ -11,6 +11,7 @@ export type ItemCardData = {
   category: string | null;
   priceCny: string | null;
   imageUrls: string[] | null;
+  sold: number | null;
   mentionCount: number;
   trendScore: number;
 };
@@ -57,6 +58,7 @@ export async function getItems(opts: {
       category: items.category,
       priceCny: items.priceCny,
       imageUrls: items.imageUrls,
+      sold: items.sold,
       mentionCount,
       trendScore,
     })
@@ -77,6 +79,7 @@ export async function getItemDetail(id: number): Promise<ItemDetail | null> {
       category: items.category,
       priceCny: items.priceCny,
       imageUrls: items.imageUrls,
+      sold: items.sold,
       descriptionEn: items.descriptionEn,
       sellerRebuyRate: items.sellerRebuyRate,
       productUrl: items.productUrl,
@@ -152,6 +155,7 @@ export async function searchItems(
       category: items.category,
       priceCny: items.priceCny,
       imageUrls: items.imageUrls,
+      sold: items.sold,
       mentionCount,
       trendScore,
     })
