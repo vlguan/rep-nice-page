@@ -1,6 +1,8 @@
+import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { cache } from "react";
 import { BackLink } from "@/components/BackLink";
 import { GuideButton } from "@/components/GuideButton";
 import { ItemGallery } from "@/components/ItemGallery";
@@ -13,11 +15,44 @@ import { superbuyUrl } from "@/lib/superbuy";
 
 export const dynamic = "force-dynamic";
 
+// cache() dedupes the DB fetch across generateMetadata + the page in one request.
+const loadItem = cache((id: number) => getItemDetail(id));
+
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const { id } = await params;
+  const numericId = Number(id);
+  if (!Number.isInteger(numericId)) return {};
+  const item = await loadItem(numericId);
+  if (!item) return {};
+
+  const title = item.titleEn ?? "Item";
+  const price = item.priceCny ? `¥${Number(item.priceCny).toFixed(0)} ≈ $${cnyToUsd(Number(item.priceCny)).toFixed(0)}` : null;
+  const description = [item.brand, price].filter(Boolean).join(" · ") || "Trending rep fashion on Digital Canal St";
+  const image = item.imageUrls?.[0];
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      type: "website",
+      images: image ? [{ url: image, alt: title }] : undefined,
+    },
+    twitter: {
+      card: image ? "summary_large_image" : "summary",
+      title,
+      description,
+      images: image ? [image] : undefined,
+    },
+  };
+}
+
 export default async function ItemPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const numericId = Number(id);
   if (!Number.isInteger(numericId)) notFound();
-  const item = await getItemDetail(numericId);
+  const item = await loadItem(numericId);
   if (!item) notFound();
 
   const price = item.priceCny ? Number(item.priceCny) : null;

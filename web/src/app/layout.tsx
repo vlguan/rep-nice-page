@@ -13,7 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Digital Canal St",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://digitalcanalst.up.railway.app"),
+  title: { default: "Digital Canal St", template: "%s · Digital Canal St" },
   description: "Curated replica fashion catalog with one-click Superbuy links",
 };
 
