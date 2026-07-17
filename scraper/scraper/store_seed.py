@@ -31,6 +31,15 @@ STORE_JSON = pathlib.Path(__file__).parent / "data" / "weidian_stores.json"
 CJK = re.compile(r"[一-鿿]")
 TRANSLATE_BATCH = 25
 CATEGORIES = ("clothing", "jewelry", "shoes", "accessory")
+STYLES = ("gorpcore", "hypebeast", "athleisure", "old money", "luxury", "minimalist")
+STYLE_GUIDE = (
+    "- gorpcore: outdoor/technical — The North Face, Arc'teryx, Salomon, Patagonia, Nike ACG, Stone Island\n"
+    "- hypebeast: loud streetwear/designer — Supreme, BAPE, Off-White, Chrome Hearts, Amiri, Gallery Dept, Hellstar, Denim Tears\n"
+    "- athleisure: sportswear/gym — Nike, Adidas, Jordan, Lululemon, Essentials tracksuits\n"
+    "- old money: prep/classic — Ralph Lauren, Zegna, Brooks Brothers, Lacoste, J.Crew\n"
+    "- luxury: high-fashion houses — Louis Vuitton, Gucci, Chanel, Dior, Prada, Balenciaga\n"
+    "- minimalist: plain basics — Fear of God Essentials, Uniqlo-style, plain tees"
+)
 
 
 def _stores() -> list[dict]:
@@ -289,6 +298,49 @@ def classify_items(commit: bool = True) -> int:
     return done
 
 
+def classify_style(commit: bool = True) -> int:
+    """Batch-tag items with a style aesthetic (gorpcore, hypebeast, ...)."""
+    import anthropic
+
+    conn = _connect()
+    llm = anthropic.Anthropic()
+    rows = conn.execute(
+        "SELECT id, title_en, brand FROM items WHERE title_en IS NOT NULL AND style IS NULL"
+    ).fetchall()
+    logger.info("classify_style: %d unstyled items", len(rows))
+    prompt = (
+        "Classify each rep-fashion product into exactly ONE style aesthetic, or null if unclear.\n"
+        f"Styles:\n{STYLE_GUIDE}\n"
+        "Return ONLY a JSON array of {n} values (a style string or null), same order.\n\nITEMS:\n{items}"
+    )
+    done = 0
+    for i in range(0, len(rows), TRANSLATE_BATCH):
+        chunk = rows[i:i + TRANSLATE_BATCH]
+        lines = "\n".join(
+            f"{j+1}. {t}" + (f" (brand: {br})" if br else "") for j, (_, t, br) in enumerate(chunk)
+        )
+        try:
+            msg = llm.messages.create(
+                model=MODEL, max_tokens=1024,
+                messages=[{"role": "user", "content": prompt.format(n=len(chunk), items=lines)}],
+            )
+            text = msg.content[0].text
+            out = json.loads(text[text.find("["):text.rfind("]") + 1])
+        except Exception as e:
+            logger.warning("style batch %d failed: %s", i // TRANSLATE_BATCH, e)
+            continue
+        if not isinstance(out, list) or len(out) != len(chunk):
+            continue
+        for (item_id, _, _), s in zip(chunk, out):
+            st = s.strip().lower() if isinstance(s, str) else None
+            st = st if st in STYLES else None
+            if commit and st:
+                conn.execute("UPDATE items SET style=%s WHERE id=%s", (st, item_id))
+                done += 1
+    logger.info("classify_style DONE: updated=%d", done)
+    return done
+
+
 def main() -> None:
     import argparse
 
@@ -298,7 +350,7 @@ def main() -> None:
     load_env_file()
     ap = argparse.ArgumentParser()
     ap.add_argument("--commit", action="store_true")
-    ap.add_argument("--phase", choices=["all", "stores", "crawl", "translate", "classify"], default="all")
+    ap.add_argument("--phase", choices=["all", "stores", "crawl", "translate", "classify", "style"], default="all")
     args = ap.parse_args()
     c = args.commit
     if args.phase in ("all", "stores"):
@@ -309,6 +361,8 @@ def main() -> None:
         translate_titles(c)
     if args.phase in ("all", "classify"):
         classify_items(c)
+    if args.phase in ("all", "style"):
+        classify_style(c)
 
 
 if __name__ == "__main__":

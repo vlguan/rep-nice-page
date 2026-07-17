@@ -58,6 +58,7 @@ def main() -> None:
             store_seed.run(commit=True)
             store_seed.translate_titles(commit=True)
             store_seed.classify_items(commit=True)
+            store_seed.classify_style(commit=True)
         except Exception:
             logger.error("store seed failed", exc_info=True)
     logger.info("worker started: weekly run Mondays %02d:00 UTC, %ss promotion polling", RUN_HOUR_UTC, POLL_SECONDS)
