@@ -12,6 +12,7 @@ import { RecommendationRow } from "@/components/RecommendationRow";
 import { StagingCard } from "@/components/StagingCard";
 import { flagRowsForPromotion, getFilterOptions, getItems, getRecommendations, PAGE_SIZE, searchItems, searchStagingRows, type SortKey } from "@/db/queries";
 import { DISMISSED_COOKIE, parseDismissed, parseTaste, TASTE_COOKIE } from "@/lib/taste";
+import { randomQuote, TAGLINE_PREFIX } from "@/lib/taglines";
 
 export const dynamic = "force-dynamic";
 
@@ -58,7 +59,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       <Banner />
       <header className="flex items-center justify-between gap-4">
         <p className="text-sm text-zinc-500">
-          trending rep fashion, begin chinamaxxing
+          {TAGLINE_PREFIX} · {randomQuote()}
         </p>
         <div className="flex shrink-0 items-center gap-2">
           <Link
