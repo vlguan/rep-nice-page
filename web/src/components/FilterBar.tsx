@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 type Props = {
   brands: string[];
   categories: string[];
-  current: { category?: string; brand?: string; sort?: string; q?: string };
+  styles: string[];
+  current: { category?: string; brand?: string; style?: string; sort?: string; q?: string };
 };
 
 function buildHref(current: Props["current"], patch: Record<string, string | undefined>) {
@@ -19,7 +20,7 @@ function buildHref(current: Props["current"], patch: Record<string, string | und
 const selectClass =
   "min-w-0 flex-1 truncate rounded border border-zinc-300 bg-white px-2 py-1.5 text-sm text-zinc-700 hover:border-zinc-400 sm:flex-none sm:w-36";
 
-export function FilterBar({ brands, categories, current }: Props) {
+export function FilterBar({ brands, categories, styles, current }: Props) {
   const router = useRouter();
   const nav = (patch: Record<string, string | undefined>) => router.push(buildHref(current, patch));
 
@@ -43,6 +44,19 @@ export function FilterBar({ brands, categories, current }: Props) {
             );
           })}
         </div>
+        <select
+        aria-label="Style"
+        className={selectClass}
+        value={current.style ?? ""}
+        onChange={(e) => nav({ style: e.target.value || undefined })}
+      >
+        <option value="">All styles</option>
+        {styles.map((s) => (
+          <option key={s} value={s} className="capitalize">
+            {s}
+          </option>
+        ))}
+      </select>
         <select
         aria-label="Category"
         className={selectClass}

@@ -43,6 +43,7 @@ export type Paginated<T> = { items: T[]; total: number };
 export async function getItems(opts: {
   category?: string;
   brand?: string;
+  style?: string;
   sort?: SortKey;
   shop?: string;
   page?: number;
@@ -50,6 +51,7 @@ export async function getItems(opts: {
   const filters = [eq(items.status, "active")];
   if (opts.category) filters.push(eq(items.category, opts.category));
   if (opts.brand) filters.push(eq(items.brand, opts.brand));
+  if (opts.style) filters.push(eq(items.style, opts.style));
   if (opts.shop) filters.push(eq(items.shopUserid, opts.shop));
 
   const orderBy =
@@ -161,7 +163,7 @@ export async function getStores(): Promise<StoreRow[]> {
     .orderBy(desc(sql`count(${items.id})`));
 }
 
-export async function getFilterOptions(): Promise<{ brands: string[]; categories: string[] }> {
+export async function getFilterOptions(): Promise<{ brands: string[]; categories: string[]; styles: string[] }> {
   const brands = await db
     .selectDistinct({ v: items.brand })
     .from(items)
@@ -177,9 +179,14 @@ export async function getFilterOptions(): Promise<{ brands: string[]; categories
     .selectDistinct({ v: items.category })
     .from(items)
     .where(and(eq(items.status, "active"), isNotNull(items.category)));
+  const styles = await db
+    .selectDistinct({ v: items.style })
+    .from(items)
+    .where(and(eq(items.status, "active"), isNotNull(items.style)));
   return {
     brands: brands.map((r) => r.v!).sort(),
     categories: categories.map((r) => r.v!).sort(),
+    styles: styles.map((r) => r.v!).sort(),
   };
 }
 

@@ -8,7 +8,7 @@ import { flagRowsForPromotion, getFilterOptions, getItems, PAGE_SIZE, searchItem
 
 export const dynamic = "force-dynamic";
 
-type SearchParams = Promise<{ category?: string; brand?: string; sort?: string; q?: string; shop?: string; page?: string }>;
+type SearchParams = Promise<{ category?: string; brand?: string; style?: string; sort?: string; q?: string; shop?: string; page?: string }>;
 
 export default async function Home({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
@@ -16,7 +16,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const q = params.q?.trim();
   const page = Math.max(1, Number(params.page) || 1);
   const [result, filterOptions, stagingRows] = await Promise.all([
-    q ? searchItems(q, { category: params.category, brand: params.brand, page }) : getItems({ category: params.category, brand: params.brand, sort, shop: params.shop, page }),
+    q ? searchItems(q, { category: params.category, brand: params.brand, page }) : getItems({ category: params.category, brand: params.brand, style: params.style, sort, shop: params.shop, page }),
     getFilterOptions(),
     q ? searchStagingRows(q) : Promise.resolve([]),
   ]);
@@ -45,7 +45,8 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       <FilterBar
         brands={filterOptions.brands}
         categories={filterOptions.categories}
-        current={{ category: params.category, brand: params.brand, sort: params.sort, q: params.q }}
+        styles={filterOptions.styles}
+        current={{ category: params.category, brand: params.brand, style: params.style, sort: params.sort, q: params.q }}
       />
       {itemList.length === 0 ? (
         <p className="text-zinc-500 py-16 text-center">
@@ -66,7 +67,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
             page={page}
             total={total}
             pageSize={PAGE_SIZE}
-            current={{ category: params.category, brand: params.brand, sort: params.sort, q: params.q, shop: params.shop }}
+            current={{ category: params.category, brand: params.brand, style: params.style, sort: params.sort, q: params.q, shop: params.shop }}
           />
         </>
       )}
