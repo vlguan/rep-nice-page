@@ -49,13 +49,27 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
           )}
           {item.sold != null && <p className="text-sm text-zinc-500">{item.sold.toLocaleString()} sold</p>}
           {item.sellerName && <p className="text-sm text-zinc-500">Seller: {item.sellerName}</p>}
-          {item.sellerRebuyRate !== null && (
+          {item.sellerRebuyRate !== null && !item.store?.note && (
             <p className="text-sm">
               <span className="font-medium text-emerald-700">{item.sellerRebuyRate}% repeat customers</span>{" "}
               <span className="text-zinc-400">
                 — share of this vendor&apos;s buyers who come back and order again
               </span>
             </p>
+          )}
+          {item.store?.note && (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+              <p className="text-sm text-emerald-900">
+                <span className="font-semibold">{item.store.name ?? "Vetted store"}</span>
+                {item.sellerRebuyRate !== null && (
+                  <span className="text-emerald-700"> · {item.sellerRebuyRate}% repeat buyers</span>
+                )}
+              </p>
+              <p className="mt-1 text-sm italic text-emerald-800">&ldquo;{item.store.note}&rdquo;</p>
+              <p className="mt-1 text-xs text-emerald-600">
+                from the <Link href="/stores" className="underline">vetted store list</Link>
+              </p>
+            </div>
           )}
 
           <a

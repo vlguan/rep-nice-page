@@ -1,6 +1,6 @@
 import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 import { db } from "./client";
-import { itemMentions, items, redditPosts, spreadsheetRows, spreadsheets } from "./schema";
+import { itemMentions, items, redditPosts, spreadsheetRows, spreadsheets, stores } from "./schema";
 
 export type SortKey = "trending" | "newest" | "price";
 
@@ -22,6 +22,7 @@ export type ItemDetail = ItemCardData & {
   productUrl: string;
   platform: string;
   sellerName: string | null;
+  store: { userid: string; name: string | null; note: string | null } | null;
   mentions: {
     permalink: string | null;
     title: string | null;
@@ -43,11 +44,13 @@ export async function getItems(opts: {
   category?: string;
   brand?: string;
   sort?: SortKey;
+  shop?: string;
   page?: number;
 }): Promise<Paginated<ItemCardData>> {
   const filters = [eq(items.status, "active")];
   if (opts.category) filters.push(eq(items.category, opts.category));
   if (opts.brand) filters.push(eq(items.brand, opts.brand));
+  if (opts.shop) filters.push(eq(items.shopUserid, opts.shop));
 
   const orderBy =
     opts.sort === "newest"
@@ -96,6 +99,7 @@ export async function getItemDetail(id: number): Promise<ItemDetail | null> {
       productUrl: items.productUrl,
       platform: items.platform,
       sellerName: items.sellerName,
+      shopUserid: items.shopUserid,
       mentionCount,
       trendScore,
     })
@@ -106,6 +110,16 @@ export async function getItemDetail(id: number): Promise<ItemDetail | null> {
     .groupBy(items.id);
 
   if (!row) return null;
+
+  const { shopUserid, ...rest } = row;
+  let store: ItemDetail["store"] = null;
+  if (shopUserid) {
+    const [s] = await db
+      .select({ userid: stores.userid, name: stores.name, note: stores.note })
+      .from(stores)
+      .where(eq(stores.userid, shopUserid));
+    store = s ?? null;
+  }
 
   const mentions = await db
     .select({
@@ -120,7 +134,31 @@ export async function getItemDetail(id: number): Promise<ItemDetail | null> {
     .where(eq(itemMentions.itemId, id))
     .orderBy(desc(redditPosts.score));
 
-  return { ...row, mentions };
+  return { ...rest, store, mentions };
+}
+
+export type StoreRow = {
+  userid: string;
+  name: string | null;
+  note: string | null;
+  itemCount: number;
+  rebuyRate: number | null;
+};
+
+export async function getStores(): Promise<StoreRow[]> {
+  return db
+    .select({
+      userid: stores.userid,
+      name: stores.name,
+      note: stores.note,
+      itemCount: sql<number>`count(${items.id})::int`,
+      rebuyRate: sql<number>`round(avg(${items.sellerRebuyRate}))::int`,
+    })
+    .from(stores)
+    .leftJoin(items, and(eq(items.shopUserid, stores.userid), eq(items.status, "active")))
+    .groupBy(stores.userid, stores.name, stores.note)
+    .having(sql`count(${items.id}) > 0`)
+    .orderBy(desc(sql`count(${items.id})`));
 }
 
 export async function getFilterOptions(): Promise<{ brands: string[]; categories: string[] }> {

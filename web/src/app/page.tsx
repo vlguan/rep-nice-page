@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { FilterBar } from "@/components/FilterBar";
 import { GuideButton } from "@/components/GuideButton";
 import { ItemCard } from "@/components/ItemCard";
@@ -7,7 +8,7 @@ import { flagRowsForPromotion, getFilterOptions, getItems, PAGE_SIZE, searchItem
 
 export const dynamic = "force-dynamic";
 
-type SearchParams = Promise<{ category?: string; brand?: string; sort?: string; q?: string; page?: string }>;
+type SearchParams = Promise<{ category?: string; brand?: string; sort?: string; q?: string; shop?: string; page?: string }>;
 
 export default async function Home({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
@@ -15,7 +16,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const q = params.q?.trim();
   const page = Math.max(1, Number(params.page) || 1);
   const [result, filterOptions, stagingRows] = await Promise.all([
-    q ? searchItems(q, { category: params.category, brand: params.brand, page }) : getItems({ category: params.category, brand: params.brand, sort, page }),
+    q ? searchItems(q, { category: params.category, brand: params.brand, page }) : getItems({ category: params.category, brand: params.brand, sort, shop: params.shop, page }),
     getFilterOptions(),
     q ? searchStagingRows(q) : Promise.resolve([]),
   ]);
@@ -31,7 +32,15 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
             trending rep fashion, begin chinamaxxing
           </p>
         </div>
-        <GuideButton />
+        <div className="flex shrink-0 items-center gap-2">
+          <Link
+            href="/stores"
+            className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100"
+          >
+            Vetted stores
+          </Link>
+          <GuideButton />
+        </div>
       </header>
       <FilterBar
         brands={filterOptions.brands}
@@ -57,7 +66,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
             page={page}
             total={total}
             pageSize={PAGE_SIZE}
-            current={{ category: params.category, brand: params.brand, sort: params.sort, q: params.q }}
+            current={{ category: params.category, brand: params.brand, sort: params.sort, q: params.q, shop: params.shop }}
           />
         </>
       )}

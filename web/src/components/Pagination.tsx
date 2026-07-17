@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-type Current = { category?: string; brand?: string; sort?: string; q?: string };
+type Current = { category?: string; brand?: string; sort?: string; q?: string; shop?: string };
 
 function hrefFor(current: Current, page: number) {
   const params = new URLSearchParams();
