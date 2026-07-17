@@ -1,11 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { CATALOG_URL_KEY } from "./CatalogTracker";
 
 /**
- * Goes back to the previous page (preserving the search/filters/page the user
- * came from). Falls back to the catalog when there's no in-app history — e.g.
- * the item was opened from a shared link or a new tab.
+ * Returns to the last catalog view (home with the same search/filters/page),
+ * skipping any items reached via "more like this". Falls back to the catalog
+ * home when there's no remembered view (e.g. opened from a shared link).
  */
 export function BackLink({ className }: { className?: string }) {
   const router = useRouter();
@@ -13,12 +14,12 @@ export function BackLink({ className }: { className?: string }) {
     <button
       type="button"
       onClick={() => {
-        if (window.history.length > 1) router.back();
-        else router.push("/");
+        const url = typeof window !== "undefined" ? sessionStorage.getItem(CATALOG_URL_KEY) : null;
+        router.push(url || "/");
       }}
       className={className}
     >
-      ← back
+      ← back to results
     </button>
   );
 }

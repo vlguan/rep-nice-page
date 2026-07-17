@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNotNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, notInArray, or, sql } from "drizzle-orm";
 import { db } from "./client";
 import { itemMentions, items, redditPosts, spreadsheetRows, spreadsheets, stores } from "./schema";
 
@@ -150,16 +150,18 @@ export type StoreRow = {
 };
 
 /**
- * Recommend items matching the user's viewed styles/brands — one standout item
- * per category (DISTINCT ON), ranked by brand match, then style match, then
- * popularity. Returns [] when there's no taste signal.
+ * Recommend items matching the user's viewed styles/brands. Picks one standout
+ * per (category, style) so a mixed taste blends across the top styles, ranked
+ * by brand match, then style match, then popularity — capped to a tidy row.
+ * Returns [] when there's no taste signal.
  */
 export async function getRecommendations(opts: {
   styles: string[];
   brands: string[];
-  excludeId?: number;
+  excludeIds?: number[];
+  limit?: number;
 }): Promise<ItemCardData[]> {
-  const { styles, brands, excludeId } = opts;
+  const { styles, brands, excludeIds, limit = 8 } = opts;
   if (styles.length === 0 && brands.length === 0) return [];
 
   const brandMatch = brands.length ? inArray(items.brand, brands) : sql`false`;
@@ -167,10 +169,10 @@ export async function getRecommendations(opts: {
   const score = sql<number>`((case when ${brandMatch} then 2 else 0 end) + (case when ${styleMatch} then 1 else 0 end))`;
 
   const conds = [eq(items.status, "active"), isNotNull(items.category), or(brandMatch, styleMatch)];
-  if (excludeId) conds.push(ne(items.id, excludeId));
+  if (excludeIds?.length) conds.push(notInArray(items.id, excludeIds));
 
-  return db
-    .selectDistinctOn([items.category], {
+  const rows = await db
+    .selectDistinctOn([items.category, items.style], {
       id: items.id,
       titleEn: items.titleEn,
       brand: items.brand,
@@ -180,10 +182,17 @@ export async function getRecommendations(opts: {
       sold: items.sold,
       mentionCount: sql<number>`0`,
       trendScore: sql<number>`0`,
+      _score: score,
     })
     .from(items)
     .where(and(...conds))
-    .orderBy(items.category, desc(score), sql`${items.sold} desc nulls last`, desc(items.id));
+    .orderBy(items.category, items.style, desc(score), sql`${items.sold} desc nulls last`, desc(items.id));
+
+  // one row per (category, style); rank the blend and keep a tidy top slice.
+  return rows
+    .sort((a, b) => b._score - a._score || (b.sold ?? 0) - (a.sold ?? 0))
+    .slice(0, limit)
+    .map(({ _score, ...r }) => r);
 }
 
 export type StoreSort = "rate" | "items" | "name";

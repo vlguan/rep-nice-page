@@ -1,5 +1,7 @@
 import { cookies } from "next/headers";
 import Link from "next/link";
+import { Suspense } from "react";
+import { CatalogTracker } from "@/components/CatalogTracker";
 import { FilterBar } from "@/components/FilterBar";
 import { GuideButton } from "@/components/GuideButton";
 import { ItemCard } from "@/components/ItemCard";
@@ -7,7 +9,7 @@ import { Pagination } from "@/components/Pagination";
 import { RecommendationRow } from "@/components/RecommendationRow";
 import { StagingCard } from "@/components/StagingCard";
 import { flagRowsForPromotion, getFilterOptions, getItems, getRecommendations, PAGE_SIZE, searchItems, searchStagingRows, type SortKey } from "@/db/queries";
-import { parseTaste, TASTE_COOKIE } from "@/lib/taste";
+import { DISMISSED_COOKIE, parseDismissed, parseTaste, TASTE_COOKIE } from "@/lib/taste";
 
 export const dynamic = "force-dynamic";
 
@@ -28,13 +30,18 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
 
   // "For you" — only on the bare catalog view (no search/filters, first page).
   const bareView = !q && !params.category && !params.brand && !params.style && !params.shop && page === 1;
-  const taste = parseTaste((await cookies()).get(TASTE_COOKIE)?.value);
+  const cookieStore = await cookies();
+  const taste = parseTaste(cookieStore.get(TASTE_COOKIE)?.value);
+  const dismissed = parseDismissed(cookieStore.get(DISMISSED_COOKIE)?.value);
   const recs = bareView && (taste.styles.length || taste.brands.length)
-    ? await getRecommendations({ styles: taste.styles, brands: taste.brands })
+    ? await getRecommendations({ styles: taste.styles, brands: taste.brands, excludeIds: dismissed })
     : [];
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 space-y-6">
+      <Suspense fallback={null}>
+        <CatalogTracker />
+      </Suspense>
       <header className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Digital Canal St</h1>
@@ -61,7 +68,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       {recs.length > 0 && (
         <RecommendationRow
           title="For you"
-          subtitle={`Because you've been browsing ${taste.styles[0] ?? taste.brands[0]}`}
+          subtitle={`Because you've been browsing ${(taste.styles.slice(0, 2).join(" & ") || taste.brands[0])}`}
           items={recs}
         />
       )}

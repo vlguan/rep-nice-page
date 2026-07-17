@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BackLink } from "@/components/BackLink";
@@ -6,6 +7,7 @@ import { ItemGallery } from "@/components/ItemGallery";
 import { RecommendationRow } from "@/components/RecommendationRow";
 import { TrackView } from "@/components/TrackView";
 import { getItemDetail, getRecommendations } from "@/db/queries";
+import { DISMISSED_COOKIE, parseDismissed } from "@/lib/taste";
 import { cnyToUsd, reviewQuote } from "@/lib/format";
 import { superbuyUrl } from "@/lib/superbuy";
 
@@ -34,10 +36,11 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
   }
   const reviews = [...reviewMap.values()].sort((a, b) => b.score - a.score);
 
+  const dismissed = parseDismissed((await cookies()).get(DISMISSED_COOKIE)?.value);
   const more = await getRecommendations({
     styles: item.style ? [item.style] : [],
     brands: item.brand ? [item.brand] : [],
-    excludeId: item.id,
+    excludeIds: [item.id, ...dismissed],
   });
 
   return (
