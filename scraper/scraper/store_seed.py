@@ -203,7 +203,7 @@ def translate_titles(commit: bool = True) -> int:
     conn = _connect()
     llm = anthropic.Anthropic()
     rows = [(i, t) for i, t in conn.execute(
-        "SELECT id, title_en FROM items WHERE title_en IS NOT NULL").fetchall() if CJK.search(t or "")]
+        "SELECT id, title_en FROM items WHERE title_en IS NOT NULL AND status='active'").fetchall() if CJK.search(t or "")]
     logger.info("translate_titles: %d Chinese titles", len(rows))
     prompt = ("Translate these Chinese rep-fashion product titles to concise English product names. "
               "Keep brand/model names as-is. Drop seller filler, sizing spam, and emoji. "
@@ -257,7 +257,7 @@ def classify_items(commit: bool = True) -> int:
     conn = _connect()
     llm = anthropic.Anthropic()
     rows = conn.execute(
-        "SELECT id, title_en FROM items WHERE title_en IS NOT NULL AND category IS NULL"
+        "SELECT id, title_en FROM items WHERE title_en IS NOT NULL AND category IS NULL AND status='active'"
     ).fetchall()
     logger.info("classify_items: %d unclassified items", len(rows))
     prompt = (
@@ -305,7 +305,7 @@ def classify_style(commit: bool = True) -> int:
     conn = _connect()
     llm = anthropic.Anthropic()
     rows = conn.execute(
-        "SELECT id, title_en, brand FROM items WHERE title_en IS NOT NULL AND style IS NULL"
+        "SELECT id, title_en, brand FROM items WHERE title_en IS NOT NULL AND style IS NULL AND status='active'"
     ).fetchall()
     logger.info("classify_style: %d unstyled items", len(rows))
     prompt = (
@@ -341,6 +341,54 @@ def classify_style(commit: bool = True) -> int:
     return done
 
 
+def prune_nonfashion(commit: bool = True) -> int:
+    """Deactivate store-seeded items that aren't wearable/carryable fashion.
+
+    Rep shops also sell packaging, shipping fees, toothbrushes, mystery boxes,
+    etc. An LLM keep/drop pass soft-deletes those (status='inactive', reversible).
+    Only touches store-seeded items, never Reddit-vetted ones.
+    """
+    import anthropic
+
+    conn = _connect()
+    llm = anthropic.Anthropic()
+    rows = conn.execute(
+        "SELECT id, title_en FROM items "
+        "WHERE shop_userid IS NOT NULL AND status='active' AND title_en IS NOT NULL"
+    ).fetchall()
+    logger.info("prune_nonfashion: judging %d store items", len(rows))
+    prompt = (
+        "Each line is a product from a rep-fashion store. For each, answer 'keep' if it is an actual "
+        "WEARABLE or CARRYABLE fashion item (clothing, shoes, bag, jewelry, watch, belt, hat, sunglasses, "
+        "scarf, gloves, socks), or 'drop' if it is NOT fashion (shipping/postage fee, packaging, box, kraft "
+        "bag, toothbrush, phone case, keychain, electronics, home goods, food, tools, mystery/blind box, "
+        "freebie, sticker, price adjustment). Return ONLY a JSON array of {n} strings ('keep'|'drop'), "
+        "same order.\n\nITEMS:\n{items}"
+    )
+    dropped = 0
+    for i in range(0, len(rows), TRANSLATE_BATCH):
+        chunk = rows[i:i + TRANSLATE_BATCH]
+        lines = "\n".join(f"{j+1}. {t}" for j, (_, t) in enumerate(chunk))
+        try:
+            msg = llm.messages.create(
+                model=MODEL, max_tokens=1024,
+                messages=[{"role": "user", "content": prompt.format(n=len(chunk), items=lines)}],
+            )
+            text = msg.content[0].text
+            out = json.loads(text[text.find("["):text.rfind("]") + 1])
+        except Exception as e:
+            logger.warning("prune batch %d failed: %s", i // TRANSLATE_BATCH, e)
+            continue
+        if not isinstance(out, list) or len(out) != len(chunk):
+            continue
+        for (item_id, _), v in zip(chunk, out):
+            if isinstance(v, str) and v.strip().lower() == "drop" and commit:
+                conn.execute("UPDATE items SET status='inactive' WHERE id=%s", (item_id,))
+                dropped += 1
+    logger.info("prune_nonfashion DONE: deactivated=%d of %d", dropped, len(rows))
+    return dropped
+
+
 def main() -> None:
     import argparse
 
@@ -350,13 +398,15 @@ def main() -> None:
     load_env_file()
     ap = argparse.ArgumentParser()
     ap.add_argument("--commit", action="store_true")
-    ap.add_argument("--phase", choices=["all", "stores", "crawl", "translate", "classify", "style"], default="all")
+    ap.add_argument("--phase", choices=["all", "stores", "crawl", "prune", "translate", "classify", "style"], default="all")
     args = ap.parse_args()
     c = args.commit
     if args.phase in ("all", "stores"):
         seed_stores(c)
     if args.phase in ("all", "crawl"):
         run(commit=c)
+    if args.phase in ("all", "prune"):
+        prune_nonfashion(c)
     if args.phase in ("all", "translate"):
         translate_titles(c)
     if args.phase in ("all", "classify"):

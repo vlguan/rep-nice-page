@@ -56,6 +56,7 @@ def main() -> None:
             logger.info("SEED_STORES set: stores + crawl + translate + classify")
             store_seed.seed_stores(commit=True)
             store_seed.run(commit=True)
+            store_seed.prune_nonfashion(commit=True)
             store_seed.translate_titles(commit=True)
             store_seed.classify_items(commit=True)
             store_seed.classify_style(commit=True)
