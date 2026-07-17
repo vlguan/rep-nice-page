@@ -33,12 +33,18 @@ export type ItemDetail = ItemCardData & {
 
 const mentionCount = sql<number>`count(${itemMentions.redditPostId})::int`;
 const trendScore = sql<number>`(count(${itemMentions.redditPostId}) + coalesce(sum(${redditPosts.score}), 0))::int`;
+// total matching rows regardless of LIMIT (window runs before LIMIT is applied)
+const totalCount = sql<number>`count(*) over()::int`;
+
+export const PAGE_SIZE = 100;
+export type Paginated<T> = { items: T[]; total: number };
 
 export async function getItems(opts: {
   category?: string;
   brand?: string;
   sort?: SortKey;
-}): Promise<ItemCardData[]> {
+  page?: number;
+}): Promise<Paginated<ItemCardData>> {
   const filters = [eq(items.status, "active")];
   if (opts.category) filters.push(eq(items.category, opts.category));
   if (opts.brand) filters.push(eq(items.brand, opts.brand));
@@ -50,7 +56,8 @@ export async function getItems(opts: {
         ? sql`${items.priceCny} asc nulls last`
         : desc(trendScore);
 
-  return db
+  const page = Math.max(1, opts.page ?? 1);
+  const rows = await db
     .select({
       id: items.id,
       titleEn: items.titleEn,
@@ -61,13 +68,17 @@ export async function getItems(opts: {
       sold: items.sold,
       mentionCount,
       trendScore,
+      total: totalCount,
     })
     .from(items)
     .leftJoin(itemMentions, eq(itemMentions.itemId, items.id))
     .leftJoin(redditPosts, eq(redditPosts.id, itemMentions.redditPostId))
     .where(and(...filters))
     .groupBy(items.id)
-    .orderBy(orderBy);
+    .orderBy(orderBy)
+    .limit(PAGE_SIZE)
+    .offset((page - 1) * PAGE_SIZE);
+  return { items: rows.map(({ total, ...r }) => r), total: rows[0]?.total ?? 0 };
 }
 
 export async function getItemDetail(id: number): Promise<ItemDetail | null> {
@@ -139,15 +150,16 @@ const fuzzy = (col: unknown, q: string) =>
 
 export async function searchItems(
   q: string,
-  opts: { category?: string; brand?: string },
-): Promise<ItemCardData[]> {
+  opts: { category?: string; brand?: string; page?: number },
+): Promise<Paginated<ItemCardData>> {
   const filters = [eq(items.status, "active")];
   if (opts.category) filters.push(eq(items.category, opts.category));
   if (opts.brand) filters.push(eq(items.brand, opts.brand));
   filters.push(
     sql`(${fuzzy(items.titleEn, q)} OR ${fuzzy(items.brand, q)} OR ${items.titleZh} ILIKE ${"%" + q + "%"})`,
   );
-  return db
+  const page = Math.max(1, opts.page ?? 1);
+  const rows = await db
     .select({
       id: items.id,
       titleEn: items.titleEn,
@@ -158,13 +170,17 @@ export async function searchItems(
       sold: items.sold,
       mentionCount,
       trendScore,
+      total: totalCount,
     })
     .from(items)
     .leftJoin(itemMentions, eq(itemMentions.itemId, items.id))
     .leftJoin(redditPosts, eq(redditPosts.id, itemMentions.redditPostId))
     .where(and(...filters))
     .groupBy(items.id)
-    .orderBy(sql`greatest(similarity(coalesce(${items.titleEn}, ''), ${q}), similarity(coalesce(${items.brand}, ''), ${q})) DESC`);
+    .orderBy(sql`greatest(similarity(coalesce(${items.titleEn}, ''), ${q}), similarity(coalesce(${items.brand}, ''), ${q})) DESC`)
+    .limit(PAGE_SIZE)
+    .offset((page - 1) * PAGE_SIZE);
+  return { items: rows.map(({ total, ...r }) => r), total: rows[0]?.total ?? 0 };
 }
 
 export type StagingCardData = {

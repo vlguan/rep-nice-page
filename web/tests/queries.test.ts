@@ -48,24 +48,25 @@ describe.skipIf(!hasDb)("queries", () => {
 
   it("never returns inactive items", async () => {
     const rows = await queries.getItems({});
-    expect(rows.map((r) => r.titleEn)).not.toContain("dead item");
+    expect(rows.items.map((r) => r.titleEn)).not.toContain("dead item");
   });
 
   it("sorts by trending (mentions + summed scores) by default", async () => {
     const rows = await queries.getItems({ sort: "trending" });
-    expect(rows[0].titleEn).toBe("hot hoodie"); // 2 mentions + 450 score
-    expect(rows[0].mentionCount).toBe(2);
+    expect(rows.items[0].titleEn).toBe("hot hoodie"); // 2 mentions + 450 score
+    expect(rows.items[0].mentionCount).toBe(2);
   });
 
   it("filters by category", async () => {
     const rows = await queries.getItems({ category: "jewelry" });
-    expect(rows).toHaveLength(1);
-    expect(rows[0].titleEn).toBe("cold ring");
+    expect(rows.items).toHaveLength(1);
+    expect(rows.total).toBe(1);
+    expect(rows.items[0].titleEn).toBe("cold ring");
   });
 
   it("item detail includes mentions, inactive detail returns null-ish for public", async () => {
     const rows = await queries.getItems({});
-    const detail = await queries.getItemDetail(rows[0].id);
+    const detail = await queries.getItemDetail(rows.items[0].id);
     expect(detail).not.toBeNull();
     expect(detail!.mentions.length).toBeGreaterThan(0);
     expect(detail!.mentions[0].permalink).toContain("reddit.com");
@@ -79,9 +80,9 @@ describe.skipIf(!hasDb)("queries", () => {
 
   it("searchItems fuzzy-matches title and brand", async () => {
     const hits = await queries.searchItems("hoddie", {});
-    expect(hits.map((h) => h.titleEn)).toContain("hot hoodie");
+    expect(hits.items.map((h) => h.titleEn)).toContain("hot hoodie");
     const brandHits = await queries.searchItems("CH", {});
-    expect(brandHits.length).toBeGreaterThan(0);
+    expect(brandHits.items.length).toBeGreaterThan(0);
   });
 
   it("searchStagingRows matches unpromoted rows and flags top matches", async () => {

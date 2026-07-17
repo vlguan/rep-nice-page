@@ -1,22 +1,25 @@
 import { FilterBar } from "@/components/FilterBar";
 import { GuideButton } from "@/components/GuideButton";
 import { ItemCard } from "@/components/ItemCard";
+import { Pagination } from "@/components/Pagination";
 import { StagingCard } from "@/components/StagingCard";
-import { flagRowsForPromotion, getFilterOptions, getItems, searchItems, searchStagingRows, type SortKey } from "@/db/queries";
+import { flagRowsForPromotion, getFilterOptions, getItems, PAGE_SIZE, searchItems, searchStagingRows, type SortKey } from "@/db/queries";
 
 export const dynamic = "force-dynamic";
 
-type SearchParams = Promise<{ category?: string; brand?: string; sort?: string; q?: string }>;
+type SearchParams = Promise<{ category?: string; brand?: string; sort?: string; q?: string; page?: string }>;
 
 export default async function Home({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
   const sort = (["trending", "newest", "price"].includes(params.sort ?? "") ? params.sort : "trending") as SortKey;
   const q = params.q?.trim();
-  const [itemList, filterOptions, stagingRows] = await Promise.all([
-    q ? searchItems(q, { category: params.category, brand: params.brand }) : getItems({ category: params.category, brand: params.brand, sort }),
+  const page = Math.max(1, Number(params.page) || 1);
+  const [result, filterOptions, stagingRows] = await Promise.all([
+    q ? searchItems(q, { category: params.category, brand: params.brand, page }) : getItems({ category: params.category, brand: params.brand, sort, page }),
     getFilterOptions(),
     q ? searchStagingRows(q) : Promise.resolve([]),
   ]);
+  const { items: itemList, total } = result;
   if (q) void flagRowsForPromotion(q).catch(() => {});
 
   return (
@@ -36,13 +39,27 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         current={{ category: params.category, brand: params.brand, sort: params.sort, q: params.q }}
       />
       {itemList.length === 0 ? (
-        <p className="text-zinc-500 py-16 text-center">No items yet — the scraper hasn&apos;t run.</p>
+        <p className="text-zinc-500 py-16 text-center">
+          {total === 0 ? "No items match." : "No items on this page."}
+        </p>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-          {itemList.map((item) => (
-            <ItemCard key={item.id} item={item} />
-          ))}
-        </div>
+        <>
+          <p className="text-xs text-zinc-500">
+            {total.toLocaleString()} item{total === 1 ? "" : "s"}
+            {total > PAGE_SIZE && ` · page ${page} of ${Math.ceil(total / PAGE_SIZE)}`}
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            {itemList.map((item) => (
+              <ItemCard key={item.id} item={item} />
+            ))}
+          </div>
+          <Pagination
+            page={page}
+            total={total}
+            pageSize={PAGE_SIZE}
+            current={{ category: params.category, brand: params.brand, sort: params.sort, q: params.q }}
+          />
+        </>
       )}
       {stagingRows.length > 0 && (
         <section className="space-y-3">
