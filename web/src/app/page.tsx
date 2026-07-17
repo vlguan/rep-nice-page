@@ -1,6 +1,8 @@
+import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import Link from "next/link";
 import { Suspense } from "react";
+import { Banner } from "@/components/Banner";
 import { CatalogTracker } from "@/components/CatalogTracker";
 import { FilterBar } from "@/components/FilterBar";
 import { GuideButton } from "@/components/GuideButton";
@@ -12,6 +14,17 @@ import { flagRowsForPromotion, getFilterOptions, getItems, getRecommendations, P
 import { DISMISSED_COOKIE, parseDismissed, parseTaste, TASTE_COOKIE } from "@/lib/taste";
 
 export const dynamic = "force-dynamic";
+
+// Home share-preview image (drop web/public/banner.png in). Absolute URL is
+// resolved via metadataBase in the root layout.
+export const metadata: Metadata = {
+  openGraph: {
+    title: "Digital Canal St",
+    description: "Curated replica fashion catalog with one-click Superbuy links",
+    images: ["/banner.png"],
+  },
+  twitter: { card: "summary_large_image", images: ["/banner.png"] },
+};
 
 type SearchParams = Promise<{ category?: string; brand?: string; style?: string; sort?: string; q?: string; shop?: string; page?: string }>;
 
@@ -42,6 +55,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       <Suspense fallback={null}>
         <CatalogTracker />
       </Suspense>
+      <Banner />
       <header className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Digital Canal St</h1>
