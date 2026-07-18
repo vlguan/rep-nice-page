@@ -316,11 +316,22 @@ def classify_style(commit: bool = True, reclassify: bool = False) -> int:
 
     conn = _connect()
     llm = anthropic.Anthropic()
+
+    def db(sql, params=None, fetch=False):
+        # reconnect-and-retry once: the long run outlives the DB proxy's idle timeout
+        nonlocal conn
+        try:
+            cur = conn.execute(sql, params or ())
+        except psycopg.OperationalError:
+            conn = _connect()
+            cur = conn.execute(sql, params or ())
+        return cur.fetchall() if fetch else None
+
     where = "title_en IS NOT NULL AND status='active'"
     if not reclassify:
         where += " AND style IS NULL"
-    rows = conn.execute(f"SELECT id, title_en, brand FROM items WHERE {where}").fetchall()
-    logger.info("classify_style: %d unstyled items", len(rows))
+    rows = db(f"SELECT id, title_en, brand FROM items WHERE {where}", fetch=True)
+    logger.info("classify_style: %d items to evaluate", len(rows))
     prompt = (
         "Classify each rep-fashion product into exactly ONE style aesthetic, or null if unclear.\n"
         f"Styles:\n{STYLE_GUIDE}\n"
@@ -348,7 +359,7 @@ def classify_style(commit: bool = True, reclassify: bool = False) -> int:
             st = s.strip().lower() if isinstance(s, str) else None
             st = st if st in STYLES else None
             if commit and st:
-                conn.execute("UPDATE items SET style=%s WHERE id=%s", (st, item_id))
+                db("UPDATE items SET style=%s WHERE id=%s", (st, item_id))
                 done += 1
     logger.info("classify_style DONE: updated=%d", done)
     return done
