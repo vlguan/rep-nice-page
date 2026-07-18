@@ -260,23 +260,26 @@ def classify_items(commit: bool = True, reclassify: bool = False) -> int:
     """Batch-classify unclassified items' brand + category from their English title.
 
     Normally only tags items with no category yet. Pass reclassify=True to also
-    re-open items already tagged 'accessory' — a targeted pass for splitting
-    luggage (suitcases, travel/duffel bags) out of the accessory bucket, since
-    luggage never hides in shoes/clothing/jewelry. category is only overwritten
-    when the model returns a valid value, so unsure items keep their label.
+    re-open items already tagged 'accessory' or 'luggage' — a targeted pass for
+    splitting travel cases out of the accessory bucket (and correcting the
+    luggage bucket) without re-touching shoes/clothing/jewelry, where luggage
+    never hides. category is only overwritten when the model returns a valid
+    value, so unsure items keep their label.
     """
     import anthropic
 
     conn = _connect()
     llm = anthropic.Anthropic()
     where = "title_en IS NOT NULL AND status='active' AND "
-    where += "(category IS NULL OR category='accessory')" if reclassify else "category IS NULL"
+    where += "(category IS NULL OR category IN ('accessory','luggage'))" if reclassify else "category IS NULL"
     rows = conn.execute(f"SELECT id, title_en FROM items WHERE {where}").fetchall()
     logger.info("classify_items: %d items (reclassify=%s)", len(rows), reclassify)
     prompt = (
         "For each rep-fashion product title, give its brand and category. "
         "category MUST be exactly one of: clothing, jewelry, shoes, accessory, luggage. "
-        "Use luggage for suitcases, carry-ons, trolley cases, travel/duffel bags, and garment bags. "
+        "Use luggage ONLY for travel cases: suitcases, carry-ons, trolley/hard cases, weekender & "
+        "travel duffel bags, and garment bags. Backpacks, totes, handbags, and crossbody/shoulder bags "
+        "are accessory, NOT luggage. "
         "brand is the main brand (Nike, Yeezy, Supreme, ...) or null if unclear. "
         'Return ONLY a JSON array of {n} objects [{{"brand":..,"category":..}}], same order.\n\nTITLES:\n{titles}'
     )
