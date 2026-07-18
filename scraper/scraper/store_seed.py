@@ -25,12 +25,12 @@ logger = logging.getLogger(__name__)
 UA = ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 "
       "(KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1")
 MIN_SOLD = 5
-SCROLLS = 8
+SCROLLS = 16
 LIST_APIS = ("getItemListForCommonItemSection", "getCateItemListForCommonItemSection")
 STORE_JSON = pathlib.Path(__file__).parent / "data" / "weidian_stores.json"
 CJK = re.compile(r"[一-鿿]")
 TRANSLATE_BATCH = 25
-CATEGORIES = ("clothing", "jewelry", "shoes", "accessory")
+CATEGORIES = ("clothing", "jewelry", "shoes", "accessory", "luggage")
 STYLES = (
     "gorpcore", "hypebeast", "athleisure", "old money", "luxury", "minimalist",
     "alt", "opium", "goth",
@@ -256,19 +256,27 @@ def seed_stores(commit: bool = True) -> int:
     return n
 
 
-def classify_items(commit: bool = True) -> int:
-    """Batch-classify unclassified items' brand + category from their English title."""
+def classify_items(commit: bool = True, reclassify: bool = False) -> int:
+    """Batch-classify unclassified items' brand + category from their English title.
+
+    Normally only tags items with no category yet. Pass reclassify=True to also
+    re-open items already tagged 'accessory' — a targeted pass for splitting
+    luggage (suitcases, travel/duffel bags) out of the accessory bucket, since
+    luggage never hides in shoes/clothing/jewelry. category is only overwritten
+    when the model returns a valid value, so unsure items keep their label.
+    """
     import anthropic
 
     conn = _connect()
     llm = anthropic.Anthropic()
-    rows = conn.execute(
-        "SELECT id, title_en FROM items WHERE title_en IS NOT NULL AND category IS NULL AND status='active'"
-    ).fetchall()
-    logger.info("classify_items: %d unclassified items", len(rows))
+    where = "title_en IS NOT NULL AND status='active' AND "
+    where += "(category IS NULL OR category='accessory')" if reclassify else "category IS NULL"
+    rows = conn.execute(f"SELECT id, title_en FROM items WHERE {where}").fetchall()
+    logger.info("classify_items: %d items (reclassify=%s)", len(rows), reclassify)
     prompt = (
         "For each rep-fashion product title, give its brand and category. "
-        "category MUST be exactly one of: clothing, jewelry, shoes, accessory. "
+        "category MUST be exactly one of: clothing, jewelry, shoes, accessory, luggage. "
+        "Use luggage for suitcases, carry-ons, trolley cases, travel/duffel bags, and garment bags. "
         "brand is the main brand (Nike, Yeezy, Supreme, ...) or null if unclear. "
         'Return ONLY a JSON array of {n} objects [{{"brand":..,"category":..}}], same order.\n\nTITLES:\n{titles}'
     )
@@ -383,8 +391,9 @@ def prune_nonfashion(commit: bool = True) -> int:
     logger.info("prune_nonfashion: judging %d store items", len(rows))
     prompt = (
         "Each line is a product from a rep-fashion store. For each, answer 'keep' if it is an actual "
-        "WEARABLE or CARRYABLE fashion item (clothing, shoes, bag, jewelry, watch, belt, hat, sunglasses, "
-        "scarf, gloves, socks), or 'drop' if it is NOT fashion (shipping/postage fee, packaging, box, kraft "
+        "WEARABLE or CARRYABLE fashion item (clothing, shoes, bag, luggage/suitcase/carry-on, jewelry, "
+        "watch, belt, hat, sunglasses, scarf, gloves, socks), or 'drop' if it is NOT fashion (shipping/"
+        "postage fee, packaging, box, kraft "
         "bag, toothbrush, phone case, keychain, electronics, home goods, food, tools, mystery/blind box, "
         "freebie, sticker, price adjustment). Return ONLY a JSON array of {n} strings ('keep'|'drop'), "
         "same order.\n\nITEMS:\n{items}"
@@ -424,7 +433,8 @@ def main() -> None:
     ap.add_argument("--commit", action="store_true")
     ap.add_argument("--phase", choices=["all", "stores", "crawl", "prune", "translate", "classify", "style"], default="all")
     ap.add_argument("--reclassify", action="store_true",
-                    help="with --phase style: re-evaluate ALL active items, not just unstyled ones")
+                    help="with --phase style: re-evaluate ALL active items, not just unstyled ones; "
+                         "with --phase classify: also re-open 'accessory' items (splits out luggage)")
     args = ap.parse_args()
     c = args.commit
     if args.phase in ("all", "stores"):
@@ -436,7 +446,7 @@ def main() -> None:
     if args.phase in ("all", "translate"):
         translate_titles(c)
     if args.phase in ("all", "classify"):
-        classify_items(c)
+        classify_items(c, reclassify=args.reclassify)
     if args.phase in ("all", "style"):
         classify_style(c, reclassify=args.reclassify)
 

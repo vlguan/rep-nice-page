@@ -5,7 +5,7 @@ import anthropic
 from .config import MODEL
 from .models import JudgeResult, RedditPost
 
-VALID_CATEGORIES = {"clothing", "jewelry", "shoes", "accessory"}
+VALID_CATEGORIES = {"clothing", "jewelry", "shoes", "accessory", "luggage"}
 
 JUDGE_PROMPT = """You are analyzing a Reddit post from r/FashionReps about replica fashion items to decide whether the community is genuinely positive about the item(s) discussed.
 
@@ -19,7 +19,7 @@ Respond with ONLY a JSON object, no other text:
   "positive_sentiment": boolean,   // true only if genuine signals outweigh shill patterns
   "red_flags": [string],           // tier-1 community callouts only; [] if none
   "brand": string or null,         // brand of the main item, e.g. "Chrome Hearts"
-  "category": "clothing" | "jewelry" | "shoes" | "accessory" or null,
+  "category": "clothing" | "jewelry" | "shoes" | "accessory" | "luggage" or null,
   "item_name": string or null,     // short item name, e.g. "horseshoe hoodie"
   "quality_summary": string        // one paragraph summarizing genuine quality signals
 }}

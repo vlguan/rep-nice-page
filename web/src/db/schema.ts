@@ -11,7 +11,7 @@ export const items = pgTable("items", {
   titleEn: text("title_en"),
   descriptionEn: text("description_en"),
   brand: text("brand"),
-  category: text("category"), // clothing | jewelry | shoes | accessory
+  category: text("category"), // clothing | jewelry | shoes | accessory | luggage
   style: text("style"), // gorpcore | hypebeast | athleisure | old money | luxury | minimalist | alt | opium | goth
   priceCny: numeric("price_cny"),
   sellerName: text("seller_name"),
