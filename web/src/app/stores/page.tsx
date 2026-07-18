@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { NavLinks } from "@/components/NavLinks";
 import { StoreControls } from "@/components/StoreControls";
 import { getStores, type StoreSort } from "@/db/queries";
 
@@ -14,13 +13,7 @@ export default async function StoresPage({ searchParams }: { searchParams: Searc
   const stores = await getStores({ q, sort });
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-8 space-y-6">
-      <div className="flex items-center justify-between gap-4">
-        <Link href="/" className="text-sm text-zinc-500 hover:underline">← back to all items</Link>
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-          <NavLinks active="/stores" />
-        </div>
-      </div>
+    <main className="mx-auto max-w-6xl px-4 py-8 space-y-6">
       <header>
         <h1 className="text-2xl font-bold">Vetted stores</h1>
         <p className="text-sm text-zinc-500">
@@ -32,7 +25,7 @@ export default async function StoresPage({ searchParams }: { searchParams: Searc
       {stores.length === 0 ? (
         <p className="text-zinc-500 py-16 text-center">{q ? "No stores match." : "No stores yet."}</p>
       ) : (
-        <ul className="grid gap-3 sm:grid-cols-2">
+        <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {stores.map((s) => (
             <li key={s.userid}>
               <Link

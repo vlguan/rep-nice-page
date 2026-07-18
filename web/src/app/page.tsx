@@ -1,12 +1,10 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { Suspense } from "react";
-import { Banner } from "@/components/Banner";
 import { CatalogTracker } from "@/components/CatalogTracker";
 import { FilterBar } from "@/components/FilterBar";
 import { GuideButton } from "@/components/GuideButton";
 import { ItemCard } from "@/components/ItemCard";
-import { NavLinks } from "@/components/NavLinks";
 import { Pagination } from "@/components/Pagination";
 import { RecommendationRow } from "@/components/RecommendationRow";
 import { StagingCard } from "@/components/StagingCard";
@@ -56,15 +54,11 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       <Suspense fallback={null}>
         <CatalogTracker />
       </Suspense>
-      <Banner />
       <header className="flex items-center justify-between gap-4">
         <p className="text-sm text-zinc-500">
           {TAGLINE_PREFIX} · {randomQuote()}
         </p>
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-          <NavLinks />
-          <GuideButton />
-        </div>
+        <GuideButton />
       </header>
       <FilterBar
         brands={filterOptions.brands}
